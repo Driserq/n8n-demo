@@ -1,0 +1,2013 @@
+{
+  "name": "Qualifier",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v1/map",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $json.firecrawl_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"url\": \"{{ $('Loop Over Items1').item.json['Company Website'].match(/^(?:https?:\\/\\/)?([^\\/\\?\\:\\s]+)/)?.[1] || $('Get row(s) in sheet').item.json['Company Website'] }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        -64
+      ],
+      "id": "87c8bec4-c39c-4e6c-8d62-374c0595a9a9",
+      "name": "/map",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "maxTries": 5
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-nano",
+          "mode": "list",
+          "cachedResultName": "GPT-5-NANO"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are a link-selector that prepares pages to be scraped for owner identification and team information for physiotherapy or rehabilitation clinics.\n────────────────────────────────────────\nTASK\n────────────────────────────────────────\nFrom the list of URLs provided in the input, return **up to 5** page links—always including the site's home page—that are most likely to contain information about the owner, staff, team roles, and clinic leadership.\nReturn your answer as a JSON array named \"links\", in priority order.  \nExample:\n{\n  \"links\": [\n    \"https://exampleclinic.com/\",\n    \"https://exampleclinic.com/our-team\",\n    \"https://exampleclinic.com/about-dr-smith\",\n    \"https://exampleclinic.com/meet-the-founder\",\n    \"https://exampleclinic.com/leadership\"\n  ]\n}\nNever return an empty array.  \nIf the home page is the only plausible page, return an array with just that URL.\n────────────────────────────────────────\nWHAT COUNTS AS \"RICH INFORMATION\"\n────────────────────────────────────────\nPrioritize pages likely to contain:\n**HIGHEST PRIORITY (Owner/Leadership Info):**\n• Owner/founder bio pages (tokens: owner, founder, established-by, founded-by, dr-[name], leadership, president, ceo, managing-partner, principal)\n• About pages that mention founding story or leadership (about, about-us, our-story, history, founded, established)\n\n**HIGH PRIORITY (Team/Staff Info):**\n• Staff lists or bios (tokens: team, our-team, staff, clinicians, therapists, providers, physical-therapists, meet-the-team, people, leadership-team)\n• Individual staff pages with names in URL (dr-[name], [name]-pt, therapist-[name])\n\n**MEDIUM PRIORITY (Context/Roles):**\n• Location pages that include staff photos or bios (location, clinic, centre, branch, downtown, north-side, etc.)\n• Career/hiring pages that show organizational structure (careers, join-our-team, hiring, employment, positions)\n• Mission/philosophy pages if they mention leadership approach (why-us, who-we-are, our-practice, our-clinic, our-approach)\n\n**LOWER PRIORITY:**\n• Service pages **only** if they describe specific clinicians or clinic philosophy\n• Blog/news pages **only** when titles clearly indicate staff interviews, achievements, or leadership features\n\nBe generous: if a non-standard label looks promising for owner/team info (e.g., \"/meet-us/\", \"/our-physical-therapy-clinic/\", \"/leadership-team/\"), include it.\n────────────────────────────────────────\nEXCLUDE ALWAYS\n────────────────────────────────────────\nIgnore any link that:\n• Ends with or contains `.xml`, `.pdf`, `.doc`, `.xls`, `.zip`, `feed`, `wp-json`, `sitemap`, `login`, `membership`, `vipcoaching`, `blank`, or tracking parameters like `?fbclid=`\n• Pure contact, booking, insurance, or appointment forms\n• Generic service descriptions without staff mentions\n• Patient portal or login pages\n• Pure testimonial or review pages without staff context\n────────────────────────────────────────\nSELECTION RULES\n────────────────────────────────────────\n1. Put the homepage as the first element\n2. Prioritize owner/founder pages over general team pages\n3. If multiple team pages exist, choose the most comprehensive one\n4. Include individual bio pages only if they appear to be leadership/owner level\n5. If multiple similar pages exist (e.g., two locations), pick the one most likely to have owner/leadership info\n6. Do **not** include duplicate URLs or fragment-only differences\n7. Maximum 5 total links including homepage\n8. If nothing except the homepage passes the rules, output the homepage only\n────────────────────────────────────────\nOUTPUT\n────────────────────────────────────────\n• Return exactly one JSON object with a single key \"links\"\n• No markdown, no extra text\n• Use absolute URLs\n────────────────────────────────────────\nFEW-SHOT EXAMPLES\n────────────────────────────────────────\nExample A (Clear owner page available)\nInput links (abridged):\nhttps://smithptclinic.com/\nhttps://smithptclinic.com/about-dr-smith/\nhttps://smithptclinic.com/our-team/\nhttps://smithptclinic.com/services/\nhttps://smithptclinic.com/contact/\n\nExpected output:\n{\n  \"links\": [\n    \"https://smithptclinic.com/\",\n    \"https://smithptclinic.com/about-dr-smith/\",\n    \"https://smithptclinic.com/our-team/\"\n  ]\n}\n\nExample B (Founder page + team info)\nInput links (abridged):\nhttps://inspireptforkids.com/\nhttps://inspireptforkids.com/meet-the-founder/\nhttps://inspireptforkids.com/our-team/\nhttps://inspireptforkids.com/our-story/\nhttps://inspireptforkids.com/services/\n\nExpected output:\n{\n  \"links\": [\n    \"https://inspireptforkids.com/\",\n    \"https://inspireptforkids.com/meet-the-founder/\",\n    \"https://inspireptforkids.com/our-team/\",\n    \"https://inspireptforkids.com/our-story/\"\n  ]\n}\n\nExample C (No dedicated owner page, rely on about/team)\nInput links (abridged):\nhttps://northcrestrehab.com/\nhttps://northcrestrehab.com/about-us/\nhttps://northcrestrehab.com/staff/\nhttps://northcrestrehab.com/leadership-team/\nhttps://northcrestrehab.com/careers/\n\nExpected output:\n{\n  \"links\": [\n    \"https://northcrestrehab.com/\",\n    \"https://northcrestrehab.com/leadership-team/\",\n    \"https://northcrestrehab.com/about-us/\",\n    \"https://northcrestrehab.com/staff/\"\n  ]\n}\n────────────────────────────────────────\nFollow these rules exactly.\n",
+              "role": "system"
+            },
+            {
+              "content": "=Links:\n{{ $json.CLEAN_LINKS }}\n"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        2032,
+        -80
+      ],
+      "id": "e31b5042-cdc1-4834-819f-0148d5fbabec",
+      "name": "PAGE_SELECTOR",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "openAiApi": {
+          "id": "4MkjXVSO56GSPTA2",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "/********************************************************************************\n*  THE ROSETTA STONE - UNIVERSAL DIAGNOSTIC\n*  Purpose:  Tries every possible path to find the links array. It WILL\n*            find it and tell you where it was. This ends the guesswork.\n********************************************************************************/\n\nlet rawLinks = [];\nlet foundPath = 'none';\n\ntry {\n  // Hypothesis 1: The data is correct: { json: { links: [...] } }\n  if ($json && Array.isArray($json.links)) {\n    rawLinks = $json.links;\n    foundPath = 'CORRECT: $json.links';\n  }\n  // Hypothesis 2: The data is malformed: { links: [...] }\n  else if ($item && Array.isArray($item.links)) {\n    rawLinks = $item.links;\n    foundPath = 'MALFORMED: $item.links';\n  }\n  // Hypothesis 3: It's a stringified array somewhere\n  else if ($json && typeof $json.links === 'string') {\n    rawLinks = JSON.parse($json.links);\n    foundPath = 'STRING: Parsed from $json.links';\n  }\n  // Add more hypotheses here if needed, but one of these should hit.\n\n} catch (error) {\n  // This catch block makes the node un-crashable.\n  const errorOutput = {\n    json: {\n      CRASH_ERROR: `The code crashed with error: ${error.message}`,\n      INCOMING_ITEM_THAT_CAUSED_CRASH: $item,\n    }\n  };\n  return errorOutput;\n}\n\n\n// --- Your filtering logic ---\nconst junkPatterns = [\n  /\\.xml$/i, /wp-sitemap/, /^\\/\\?/, /\\/author\\//, /\\/category\\//,\n  /thank-you/, /\\/wp-json\\//, /\\/feed\\//, /oceanwp_library/, /sitemap_index/,\n  /faq-sitemap/, /location-sitemap/, /newsletter-sitemap/, /job-sitemap/,\n  /our_team-sitemap/, /post-sitemap/, /ebook-sitemap/, /page-sitemap/,\n  /\\.pdf$/i\n];\nconst demoSlugs = [\n  'cras-metus-sed-aliquet-risus-a-tortor', 'quis-ligula-lacinia-aliquet-mauris',\n  'nulla-metus-metus-ullamcorper', 'luctus-non-massa-fusce-ac-turpis',\n  'pellentesque-nibh-aenean-quam', 'conubia-nostra-per-inceptos',\n];\nconst CLEAN_LINKS = rawLinks\n  .filter(link => typeof link === 'string' && link.trim() !== '')\n  .filter(link => !junkPatterns.some(pattern => pattern.test(link)))\n  .filter(link => !demoSlugs.some(slug => link.includes(slug)));\n// --- End filtering logic ---\n\n\n// --- Build the definitive diagnostic output ---\nconst diagnosticOutput = {\n  json: {\n    // This tells us EXACTLY what path worked.\n    FOUND_PATH: foundPath,\n    // How many links we started with.\n    RAW_LINK_COUNT: rawLinks.length,\n    // How many links we ended with.\n    CLEAN_LINK_COUNT: CLEAN_LINKS.length,\n    // The final, cleaned list of links.\n    CLEAN_LINKS: CLEAN_LINKS,\n    // Uncomment the line below to see the full original item if you still have issues.\n    // FULL_INCOMING_ITEM: $item,\n  }\n};\n\nreturn diagnosticOutput;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1664,
+        -96
+      ],
+      "id": "9617e6b3-22c7-4309-99c0-14cf57fc6225",
+      "name": "CLEAN_LINKS",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"links\":  {{ $json.links }}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1392,
+        -96
+      ],
+      "id": "4746cd4f-0682-4206-a42d-b12410ed39db",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6a13f23e-6d1b-4cd2-82ff-4a4acf701847",
+              "name": "links",
+              "value": "={{ $json.message.content.links }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2528,
+        -80
+      ],
+      "id": "95d31a2b-9ca4-44d1-803a-a937bd7dca5e",
+      "name": "Edit Fields2"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "links",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        2736,
+        -80
+      ],
+      "id": "09fc26c2-a0be-48ad-bf7c-f1db183be2b6",
+      "name": "Split Out2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nfor (const item of $input.all()) {\n  item.json.myNewField = 1;\n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2944,
+        -80
+      ],
+      "id": "a681ac2c-d5c0-467e-aa54-dd6a62e0b7d1",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "html": "={{ $json.data }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.markdown",
+      "typeVersion": 1,
+      "position": [
+        5056,
+        80
+      ],
+      "id": "93b2e17e-62d6-4d89-b568-613e18ae7cf8",
+      "name": "Markdown"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.data; // Your markdown input\n\nfunction cleanMarkdown(text) {\n  return text\n    .replace(/!\\[.*?\\]\\(.*?\\)/g, '')\n    .replace(/\\[([^\\]]+)\\]\\([^)]+\\)/g, '$1')\n    .replace(/^\\s*(Menu|Send|Skip to content|Call Now Button|Terms & Conditions|Privacy Policy|Site design:.*|Instagram|Envelope|Twitter|Yelp|Facebook)\\s*$/gmi, '')\n    .replace(/\\(?\\d{3}\\)?[-.\\s]?\\d{3}[-.\\s]?\\d{4}/g, '')\n    .replace(/^\\s*$/gm, '')\n    .replace(/^\\s+|\\s+$/gm, '')\n    .replace(/\\n{2,}/g, '\\n');\n}\n\nconst clean = cleanMarkdown(raw);\n\nreturn [\n  {\n    json: {\n      cleanedPage: clean\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5392,
+        80
+      ],
+      "id": "1c520b17-e3ec-41e0-a35b-27895023dc3b",
+      "name": "CleanPage",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "cleanedPage"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        4480,
+        -176
+      ],
+      "id": "5f85dd7c-3d1c-4bf4-b35d-526c1ef78efb",
+      "name": "WEBSITE_AGGREGATE"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "34bd331f-abd8-4fdc-acd8-bd9d0a58f3a2",
+              "leftValue": "={{ $json[\"cleanedPage\"] }}",
+              "rightValue": "[]",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4928,
+        -256
+      ],
+      "id": "909df2ed-31ff-4670-8a13-c624c6f01df1",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the single item from the loop's output array.\nconst item = items[0];\n\n// The 'links' field is a string representing a JSON array.\n// JSON.parse() converts that string into a real JavaScript array.\nconst parsedLinks = JSON.parse(item.json.links);\n\n// Overwrite the old string with the new, correct array.\nitem.json.links = parsedLinks;\n\n// You also said myNewField is useless. I've killed it for you.\ndelete item.json.myNewField;\n\n// Return the modified item for the next node in the workflow.\nreturn [item];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3232,
+        -112
+      ],
+      "id": "e3f1e9c1-5d32-4b3e-b110-d606b6c2ae72",
+      "name": "Code4"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "links",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        3520,
+        -112
+      ],
+      "id": "ebf8b699-8e1c-4c1c-968c-cb6c04685b22",
+      "name": "Split Out3"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1114239147,
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=1114239147"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -384,
+        -80
+      ],
+      "id": "c93e7f1c-20ac-4881-9b4e-4e7a1955ec17",
+      "name": "Get row(s) in sheet",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.0-flash",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        5216,
+        -16
+      ],
+      "id": "792d1942-9a7a-4c0a-bab0-6886c0812fcd",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "8LLLd9zqKaSVnXnO",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=<<PAGES>>\n{{ $node[\"WEBSITE_AGGREGATE\"].json[\"cleanedPage\"] }}\n<<END-PAGES>>\n\n<<REVIEWS>>\n{{ $('Loop Over Items1').item.json.Reviews }}\n<<END-REVIEWS>>\n\nMetadata  \nCLINIC_NAME = {{ $('Loop Over Items1').item.json[\"Current Company\"] }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=Follow all instructions literally without improvisation—treat this as a strict script.\n\nROLE:\nAnalyze scraped clinic website content and reviews to identify the owner of a physical therapy clinic. Output **ONLY** either the owner's name or SKIP based on strict qualification criteria. Do NOT output any reasoning, explanation, or intermediate steps.\n\nVALIDATION PROCESS:\nUse this three-step validation process. A prospect must pass ALL three steps to qualify.\n\nStep 1: Check for Hard Disqualifiers.\n- Scan for \"vendor\" or \"non-clinical\" signals: \"management services,\" \"growth initiatives,\" \"network alignment,\" \"consulting,\" \"marketing services,\" \"franchise,\" \"corporate headquarters,\" \"management company.\"\n- Scan for chain indicators: \"multiple locations across states,\" \"nationwide network,\" \"corporate office,\" \"regional manager,\" \"district manager,\" \"franchise owner,\" \"licensed territories,\" mentions of 50+ locations.\n- If any disqualifiers found, output 'SKIP: Disqualified as vendor/consulting service or nationwide chain.' and stop.\n\nStep 2: The Signal Dominance Test.\n- Count unique \"Core Physio Signals\": \"physical therapy\", \"manual therapy\", \"orthopedics\", \"dry needling\", \"pelvic health\", \"post-surgical\", \"sports medicine\", \"spine care\", \"strength and balance\", \"vestibular\", \"aquatic therapy\".\n- Count unique \"Competing Therapy Signals\": \"occupational therapy\", \"speech therapy\", \"reading tutoring\", \"behavioral therapy\", \"counseling\".\n- Core Physio Signals must be greater than Competing Therapy Signals.\n- If fails, output 'SKIP: Focus on multidisciplinary services, not predominantly physical therapy.' and stop.\n\nStep 3: The Minimum Threshold Test.\n- Core Physio Signals must be 3 or more for sufficient PT depth.\n- If fails, output 'SKIP: Insufficient depth in physical therapy services.' and stop.\n\nOWNER IDENTIFICATION:\nAfter passing validation, scan website content for owner indicators in this priority order:\n1. \"Owner,\" \"Founder,\" \"Founded by,\" \"Established by\"\n2. \"President,\" \"CEO,\" \"Managing Partner\" \n3. \"Principal,\" \"Director\" (only if clearly ownership context)\n4. \"Dr.\" titles in About/Leadership sections with ownership language\n5. Solo practitioner indicators: \"I started,\" \"My clinic,\" \"My practice\"\n\nREVIEW HINTS (SECONDARY VERIFICATION ONLY):\nUse reviews to identify potential owner names mentioned by patients, such as:\n- \"Dr. [Name] is amazing\"\n- \"Thanks to [Name] for starting this clinic\"\n- \"[Name] really cares about his/her patients\"\n- \"The owner [Name] personally helped me\"\n\nCRITICAL RULE: Review hints MUST be verified by website data. If a name appears frequently in reviews but is NOT confirmed by website content as the owner, output 'SKIP: Cannot verify owner from website data.'\n\nCHAIN DETECTION:\nEven if passes initial validation, output SKIP if:\n- More than 15 locations mentioned\n- Multiple states/regions served\n- Corporate structure language\n- Franchise terminology\n- \"Regional\" or \"District\" management titles\n\nOUTPUT RULES:\n- Output **ONLY** one line, either:\n  - \"[First Name Last Name]\" (no titles, first owner if multiple)\n  - OR one of the SKIP messages exactly:\n    - 'SKIP: Disqualified as vendor/consulting service or nationwide chain.'\n    - 'SKIP: Focus on multidisciplinary services, not predominantly physical therapy.'\n    - 'SKIP: Insufficient depth in physical therapy services.'\n    - 'SKIP: Cannot verify owner from website data.'\n    - 'SKIP: Cannot identify owner'\n    - 'SKIP: Chain clinic'\n\n**CRITICAL: No reasoning, no explanation, no extra text under any circumstances.**\n\nOWNER NAME RULES:\n- Use full name as written (e.g., \"Dr. Sarah Johnson\" becomes \"Sarah Johnson\")\n- Remove titles (Dr., PT, DPT, etc.)\n- If multiple owners listed, use primary/first mentioned\n- Must be explicitly identified as owner/founder in website content, not just staff\n- Review mentions alone are insufficient—website must confirm ownership role\n\nVERIFICATION PROCESS:\n1. Scan website content for ownership indicators\n2. Cross-reference any names found in reviews with website ownership data\n3. Only output owner name if both website AND review data align\n4. If reviews mention names not found on website as owners, treat as unverified\n\nExamples:\nInput: Website says \"Founded by Dr. Michael Chen\" + Reviews mention \"Dr. Chen is the best\"\nOutput: OWNER: Michael Chen\n\nInput: Website shows \"Our team includes Dr. Smith, Dr. Jones\" + Reviews say \"Dr. Smith is amazing\"\nOutput: SKIP: Cannot verify owner from website data\n\nInput: Website says \"BenchMark Physical Therapy network with 400+ locations\"\nOutput: SKIP: Chain clinic\n\n**FINAL INSTRUCTION: Your response must be exactly one line. Nothing else.**\n\nAnalyze the provided website content and reviews following these exact steps."
+            }
+          ]
+        },
+        "batching": {
+          "batchSize": 1,
+          "delayBetweenBatches": 5000
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        5152,
+        -224
+      ],
+      "id": "820b7768-8337-444d-bf5a-3a895846b813",
+      "name": "QUALIFIER"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2e50b514-6fee-4802-a28e-fa2d276d30dc",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "SKIP",
+              "operator": {
+                "type": "string",
+                "operation": "notStartsWith"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5504,
+        -224
+      ],
+      "id": "2ee144eb-c2d5-4ebe-832f-327298a56eeb",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 423855279,
+          "mode": "list",
+          "cachedResultName": "VERIF_NEEDED",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=423855279"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Clean Name": "={{ $json.text }}",
+            "Links": "={{ $('Code1').item.json.links }}",
+            "Current Company": "={{ $('Loop Over Items1').item.json[\"Current Company\"] }}",
+            "City": "={{ $('Loop Over Items1').item.json.City }}",
+            "Country": "={{ $('Loop Over Items1').item.json.Country }}",
+            "Reviews": "={{ $('Loop Over Items1').item.json.Reviews }}",
+            "Company Website": "={{ $('Loop Over Items1').item.json[\"Company Website\"] }}"
+          },
+          "matchingColumns": [
+            "Company Website"
+          ],
+          "schema": [
+            {
+              "id": "Clean Name",
+              "displayName": "Clean Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Current Company",
+              "displayName": "Current Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Links",
+              "displayName": "Links",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reviews",
+              "displayName": "Reviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        5760,
+        -112
+      ],
+      "id": "06e5509b-0c7b-48da-9859-622eff1147f7",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 584418893,
+          "mode": "list",
+          "cachedResultName": "THE QUALIFIER",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=584418893"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Current Company": "={{ $('Loop Over Items1').item.json[\"Current Company\"] }}",
+            "Company Website": "={{ $('Loop Over Items1').item.json[\"Company Website\"].match(/^(?:https?:\\/\\/)?([^\\/\\?\\:\\s]+)/)?.[1] || $('Get row(s) in sheet').item.json['Company Website'] }}",
+            "City": "={{ $('Loop Over Items1').item.json.City }}",
+            "Country": "={{ $('Loop Over Items1').item.json.Country }}",
+            "Clean Name": "={{ $json.text }}",
+            "Links": "={{ $('Code1').item.json.links }}",
+            "Reviews": "={{ $('Loop Over Items1').item.json.Reviews }}"
+          },
+          "matchingColumns": [
+            "WebsiteURL"
+          ],
+          "schema": [
+            {
+              "id": "Clean Name",
+              "displayName": "Clean Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Current Company",
+              "displayName": "Current Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Links",
+              "displayName": "Links",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reviews",
+              "displayName": "Reviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Posts",
+              "displayName": "Posts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "useAppend": true
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        5712,
+        -384
+      ],
+      "id": "e370afb0-46c4-4e49-b310-b9c4cd066ce8",
+      "name": "Append row in sheet1",
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 423855279,
+          "mode": "list",
+          "cachedResultName": "VERIF_NEEDED",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=423855279"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Current Company": "={{ $('Loop Over Items1').item.json[\"Current Company\"] }}",
+            "Company Website": "={{ $('Loop Over Items1').item.json[\"Company Website\"] }}",
+            "City": "={{ $('Loop Over Items1').item.json.City }}",
+            "Country": "={{ $('Loop Over Items1').item.json.Country }}",
+            "Clean Name": "=404 Error",
+            "Links": "={{ $node[\"Code1\"].json[\"links\"] }}",
+            "Reviews": "={{ $('Loop Over Items1').item.json.Reviews }}"
+          },
+          "matchingColumns": [
+            "WebsiteURL"
+          ],
+          "schema": [
+            {
+              "id": "Clean Name",
+              "displayName": "Clean Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Current Company",
+              "displayName": "Current Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Links",
+              "displayName": "Links",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reviews",
+              "displayName": "Reviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        5152,
+        -688
+      ],
+      "id": "fa0193cc-0dee-4031-aa71-f405a1d57013",
+      "name": "Append row in sheet2",
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": "={{ $prevNode.name === 'Split Out3' }}"
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        3984,
+        -64
+      ],
+      "id": "5216b767-bb42-4f6b-bb75-bb03e609c7b4",
+      "name": "Page By Page"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "44c9ba14-ad5d-4f5d-9397-e410ced27ad0",
+              "name": "link",
+              "value": "={{ $json[\"links\"] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4512,
+        -32
+      ],
+      "id": "9d86613a-a5b9-4e71-9291-de38755d97c9",
+      "name": "Edit Fields3"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.link }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\n  \"User-Agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\",\n  \"Accept\": \"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7\",\n  \"Accept-Language\": \"en-US,en;q=0.9\",\n  \"Accept-Encoding\": \"gzip, deflate, br\",\n  \"Sec-CH-UA\": \"\\\"Chromium\\\";v=\\\"139\\\", \\\"Not;A Brand\\\";v=\\\"99\\\", \\\"Google Chrome\\\";v=\\\"139\\\"\",\n  \"Sec-CH-UA-Mobile\": \"?0\",\n  \"Sec-CH-UA-Platform\": \"\\\"Windows\\\"\",\n  \"Sec-CH-UA-Full-Version-List\": \"\\\"Chromium\\\";v=\\\"139.0.7258.138\\\", \\\"Not;A Brand\\\";v=\\\"99.0.0.0\\\", \\\"Google Chrome\\\";v=\\\"139.0.7258.138\\\"\",\n  \"Sec-CH-UA-Form-Factors\": \"\\\"Desktop\\\"\",\n  \"Referer\": \"{{ (['https://www.google.com/', `https://www.google.com/search?q=physio+${ $node[\"Get row(s) in sheet\"].json[\"City\"] }`, 'https://maps.google.com/'])[Math.floor(Math.random() * 3)] }}\",\n  \"Upgrade-Insecure-Requests\": \"1\",\n  \"Connection\": \"keep-alive\"\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4752,
+        -32
+      ],
+      "id": "2b99992a-6cfa-491a-8eb5-12fba575f44a",
+      "name": "SCRAPE PAGES",
+      "retryOnFail": false,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "44c9ba14-ad5d-4f5d-9397-e410ced27ad0",
+              "name": "link",
+              "value": "=https://www.spoonerpt.com/locations/arizona/scottsdale",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3296,
+        528
+      ],
+      "id": "20352a70-3f56-4d33-9311-99c940dbacff",
+      "name": "Edit Fields4"
+    },
+    {
+      "parameters": {
+        "url": "=https://www.spoonerpt.com/locations/arizona/scottsdale",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\n  \"User-Agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\",\n  \"Accept\": \"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7\",\n  \"Accept-Language\": \"en-US,en;q=0.9\",\n  \"Accept-Encoding\": \"gzip, deflate, br\",\n  \"Sec-CH-UA\": \"\\\"Chromium\\\";v=\\\"139\\\", \\\"Not;A Brand\\\";v=\\\"99\\\", \\\"Google Chrome\\\";v=\\\"139\\\"\",\n  \"Sec-CH-UA-Mobile\": \"?0\",\n  \"Sec-CH-UA-Platform\": \"\\\"Windows\\\"\",\n  \"Sec-CH-UA-Full-Version-List\": \"\\\"Chromium\\\";v=\\\"139.0.6493.0\\\", \\\"Not;A Brand\\\";v=\\\"99.0.0.0\\\", \\\"Google Chrome\\\";v=\\\"139.0.6493.0\\\"\",\n  \"Sec-CH-UA-Form-Factors\": \"\\\"Desktop\\\"\",\n  \"Referer\": \"{{ (['https://www.google.com/', `https://www.google.com/search?q=physio+${$('first filter').item.json.City}`, 'https://maps.google.com/'])[Math.floor(Math.random() * 3)] }}\",\n  \"Upgrade-Insecure-Requests\": \"1\",\n  \"Connection\": \"keep-alive\"\n}\n",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3536,
+        528
+      ],
+      "id": "c5c2297a-855b-4aba-ac83-4688de0dd8a9",
+      "name": "SCRAPE PAGES1",
+      "retryOnFail": false,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1114239147,
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=1114239147"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Company Website": "={{ $('Loop Over Items1').item.json[\"Company Website\"] }}",
+            "Clean Name": "=404 Error"
+          },
+          "matchingColumns": [
+            "Company Website"
+          ],
+          "schema": [
+            {
+              "id": "Clean Name",
+              "displayName": "Clean Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Current Company",
+              "displayName": "Current Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reviews",
+              "displayName": "Reviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        5360,
+        -688
+      ],
+      "id": "981a6ada-008c-4607-a467-2db04a9dad6d",
+      "name": "Update row in sheet2",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9a36483c-0c21-4907-9395-c7a1491c89af",
+              "leftValue": "={{ $json[\"Company Website\"] }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        288,
+        -80
+      ],
+      "id": "194cdb9a-b075-41cf-aa60-fd3b0caf1df5",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 423855279,
+          "mode": "list",
+          "cachedResultName": "VERIF_NEEDED",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=423855279"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Current Company": "={{ $('Loop Over Items1').item.json[\"Current Company\"] }}",
+            "Company Website": "={{ $('Loop Over Items1').item.json[\"Company Website\"].match(/^(?:https?:\\/\\/)?([^\\/\\?\\:\\s]+)/)?.[1] || $('Get row(s) in sheet').item.json['Company Website'] }}",
+            "City": "={{ $('Loop Over Items1').item.json.City }}",
+            "Country": "={{ $('Loop Over Items1').item.json.Country }}",
+            "Clean Name": "=NO_WEBSITE"
+          },
+          "matchingColumns": [
+            "WebsiteURL"
+          ],
+          "schema": [
+            {
+              "id": "Clean Name",
+              "displayName": "Clean Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Current Company",
+              "displayName": "Current Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Links",
+              "displayName": "Links",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reviews",
+              "displayName": "Reviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        528,
+        -384
+      ],
+      "id": "db534676-5e5d-4db0-8109-dfd8c2a807f2",
+      "name": "Append row in sheet3",
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1114239147,
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=1114239147"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Company Website": "={{ $node[\"Filter\"].json[\"Current Company\"] }}",
+            "Clean Name": "=NO_WEBSITE"
+          },
+          "matchingColumns": [
+            "Company Website"
+          ],
+          "schema": [
+            {
+              "id": "Clean Name",
+              "displayName": "Clean Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Current Company",
+              "displayName": "Current Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reviews",
+              "displayName": "Reviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        736,
+        -384
+      ],
+      "id": "22c54d8b-3229-44dc-a194-5f6a2e2c87cc",
+      "name": "Update row in sheet3",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{}"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -608,
+        -80
+      ],
+      "id": "0144d39e-c68e-46b3-835a-27fcd53a3fb0",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ceca190c-86f3-4048-9bbf-bde8d0f842ce",
+              "leftValue": "={{ $json[\"Clean Name\"] }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -176,
+        -80
+      ],
+      "id": "d1a1b35e-825a-4d4f-805e-e425657eaab9",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        32,
+        -80
+      ],
+      "id": "6cdd6d4b-1f53-49ac-8282-c6fc063860e9",
+      "name": "Loop Over Items1"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1114239147,
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=1114239147"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Company Website": "={{ $('Loop Over Items1').item.json[\"Company Website\"] }}",
+            "Clean Name": "={{ $('If1').item.json.text }}"
+          },
+          "matchingColumns": [
+            "Company Website"
+          ],
+          "schema": [
+            {
+              "id": "Clean Name",
+              "displayName": "Clean Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Current Company",
+              "displayName": "Current Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reviews",
+              "displayName": "Reviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        5968,
+        -112
+      ],
+      "id": "b2cf3651-9c44-4060-ae94-cff256d9e4a6",
+      "name": "Append or update row in sheet",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1114239147,
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=1114239147"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Company Website": "={{ $('Loop Over Items1').item.json[\"Company Website\"] }}",
+            "Clean Name": "={{ $('If1').item.json.text }}"
+          },
+          "matchingColumns": [
+            "Company Website"
+          ],
+          "schema": [
+            {
+              "id": "Clean Name",
+              "displayName": "Clean Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Current Company",
+              "displayName": "Current Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reviews",
+              "displayName": "Reviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        5920,
+        -384
+      ],
+      "id": "acef931d-050d-4a98-825f-f3d7f56f4cf4",
+      "name": "Append or update row in sheet1",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "/map": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PAGE_SELECTOR": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CLEAN_LINKS": {
+      "main": [
+        [
+          {
+            "node": "PAGE_SELECTOR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "CLEAN_LINKS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields2": {
+      "main": [
+        [
+          {
+            "node": "Split Out2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out2": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Markdown": {
+      "main": [
+        [
+          {
+            "node": "CleanPage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CleanPage": {
+      "main": [
+        [
+          {
+            "node": "Page By Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WEBSITE_AGGREGATE": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code4": {
+      "main": [
+        [
+          {
+            "node": "Split Out3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out3": {
+      "main": [
+        [
+          {
+            "node": "Page By Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Code4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "QUALIFIER",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "QUALIFIER",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "QUALIFIER": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Append or update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet1": {
+      "main": [
+        [
+          {
+            "node": "Append or update row in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Page By Page": {
+      "main": [
+        [
+          {
+            "node": "WEBSITE_AGGREGATE",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields3": {
+      "main": [
+        [
+          {
+            "node": "SCRAPE PAGES",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SCRAPE PAGES": {
+      "main": [
+        [
+          {
+            "node": "Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Page By Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields4": {
+      "main": [
+        [
+          {
+            "node": "SCRAPE PAGES1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet2": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "/map",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet3": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items1": {
+      "main": [
+        [],
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet3": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet2": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append or update row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append or update row in sheet1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "3c92385b-1ebe-4c15-9b51-80a6c670245b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f9d9f220da8d492a475ca89dbc59b44a2dd3db1c621f47d4ce47cd486baf91f3"
+  },
+  "id": "38XHZQcsCUuJT2kn",
+  "tags": []
+}

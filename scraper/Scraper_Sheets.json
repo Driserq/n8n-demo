@@ -1,0 +1,388 @@
+{
+  "name": "Scraper_Sheets",
+  "nodes": [
+    {
+      "parameters": {
+        "fileSelector": "=/data/shared/{{ $json.query.filename }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        352,
+        16
+      ],
+      "id": "1bfc4f4d-16c7-489e-9056-3fc537a5e97f",
+      "name": "Read/Write Files from Disk",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        784,
+        80
+      ],
+      "id": "58a7ffb1-36f1-44d4-809f-f1995ee340ae",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the raw text data\nconst rawText = $input.first().json.data;\n\n// Split into lines and filter empty ones\nconst lines = rawText.split('\\n').filter(line => line.trim() !== '');\n\n// Parse each line as JSON\nconst results = [];\nfor (const line of lines) {\n  try {\n    // Parse the JSON string\n    const clinicData = JSON.parse(line);\n    results.push({ json: clinicData });\n  } catch (error) {\n    console.log('Failed to parse line:', error.message);\n  }\n}\n\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        80
+      ],
+      "id": "d153ff87-1621-443f-856a-439d96cb08c8",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "496f3918-688c-46bf-bbae-0e32dcdf42c0",
+              "leftValue": "={{ $json.review_rating }}",
+              "rightValue": 4,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "bcf8b209-ca39-412f-a391-d4db30fdb97a",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "Temporarily closed",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            },
+            {
+              "id": "5e5ff2a7-07ce-431a-9551-44a841619d26",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "Permanently closed",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            },
+            {
+              "id": "7c735261-d215-4a5d-b65e-c1ea45b3bdc6",
+              "leftValue": "={{ $json.web_site }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "d28aed58-9758-4721-94ac-e5ba9c31c5cb",
+              "leftValue": "={{ $json.review_count }}",
+              "rightValue": 5,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        1408,
+        80
+      ],
+      "id": "9a10bf34-fe76-4687-b079-628cb58e6d3e",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "jsCode": "for (const item of items) {\n  // Ensure the reviews array exists\n  if (Array.isArray(item.json.user_reviews_extended)) {\n\n    const finalReviews = item.json.user_reviews_extended\n      // Step 1: Filter out reviews with no real description\n      .filter(review => review.Description && typeof review.Description === 'string' && review.Description.trim() !== '')\n      \n      // Step 2: Limit to the first 15 valid reviews\n      .slice(0, 15)\n      \n      // Step 3: Transform each review, keeping only Name and Description\n      .map(review => ({\n        Name: review.Name,\n        Description: review.Description\n      }));\n\n    // Replace the original array with the clean, lean, final version\n    item.json.user_reviews_extended = finalReviews;\n  }\n}\n\n// Pass the fully processed items to the next node\nreturn items;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1616,
+        80
+      ],
+      "id": "0bc7a50b-3931-473c-89c8-9a7bf00733ee",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "TEST",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        32,
+        0
+      ],
+      "id": "03ba3362-d531-4dc2-8646-f387913a9251",
+      "name": "Webhook",
+      "webhookId": ""
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1114239147,
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=1114239147"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Current Company": "={{ $json.title }}",
+            "Company Website": "={{ $json.web_site }}",
+            "City": "={{ $json.complete_address.city }}",
+            "Country": "={{ $json.complete_address.country }}",
+            "Reviews": "={{ $json.user_reviews_extended }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Clean Name",
+              "displayName": "Clean Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Current Company",
+              "displayName": "Current Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reviews",
+              "displayName": "Reviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "useAppend": true
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1824,
+        80
+      ],
+      "id": "eb6ffc54-3502-4a3a-bfbc-ee26e49b338b",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "38XHZQcsCUuJT2kn",
+          "mode": "list",
+          "cachedResultName": "New_Qualifier"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2032,
+        80
+      ],
+      "id": "a4107b80-afa6-45e9-a6a8-d9abc8b1ff07",
+      "name": "Execute Workflow"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Read/Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Execute Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "9f656b30-a706-4c3c-af1d-a3431f9eb47c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f9d9f220da8d492a475ca89dbc59b44a2dd3db1c621f47d4ce47cd486baf91f3"
+  },
+  "id": "WJh9Luorr303slQw",
+  "tags": []
+}

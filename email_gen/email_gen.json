@@ -1,0 +1,2979 @@
+{
+  "name": "email_gen",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -3472,
+        912
+      ],
+      "id": "8ba93cc9-3b0b-49c3-915f-2bf52137417a",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "html": "={{ $json.data }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.markdown",
+      "typeVersion": 1,
+      "position": [
+        288,
+        1152
+      ],
+      "id": "45bdc361-9079-4bdc-a47c-e2d1a155c9ce",
+      "name": "Markdown"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.data; // Your markdown input\n\nfunction cleanMarkdown(text) {\n  return text\n    .replace(/!\\[.*?\\]\\(.*?\\)/g, '')\n    .replace(/\\[([^\\]]+)\\]\\([^)]+\\)/g, '$1')\n    .replace(/^\\s*(Menu|Send|Skip to content|Call Now Button|Terms & Conditions|Privacy Policy|Site design:.*|Instagram|Envelope|Twitter|Yelp|Facebook)\\s*$/gmi, '')\n    .replace(/\\(?\\d{3}\\)?[-.\\s]?\\d{3}[-.\\s]?\\d{4}/g, '')\n    .replace(/^\\s*$/gm, '')\n    .replace(/^\\s+|\\s+$/gm, '')\n    .replace(/\\n{2,}/g, '\\n');\n}\n\nconst clean = cleanMarkdown(raw);\n\nreturn [\n  {\n    json: {\n      cleanedPage: clean\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        1152
+      ],
+      "id": "8b531c1c-aa9a-4559-a031-bef0bae87911",
+      "name": "CleanPage",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Processes ONE item at a time.\n * REQUIRED MODE: Run Once for Each Item\n */\n\nconst rawData = $json.data;\n\nif (typeof rawData !== 'string' || rawData.length === 0) {\n  return [];\n}\n\nconst re = /\\bhttps?:\\/\\/(?:www\\.|m\\.)?(?:facebook|fb)\\.com\\/[^\\s\"'<>]+/gi;\nconst matches = rawData.match(re) || [];\n\nif (matches.length === 0) {\n  return [];\n}\n\nconst uniqueCleanLinks = [...new Set(\n  matches\n    .map(link => link.replace(/[.,;:!)\\]>’\"']+$/, \"\"))\n    .filter(url => !url.startsWith(\"https://www.facebook.com/tr?id=\") && url !== \"http://www.facebook.com/2008/fbml\")\n)];\n\nreturn uniqueCleanLinks.map(link => ({\n  json: {\n    FB_LINK: link\n  }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1552,
+        816
+      ],
+      "id": "571682ae-5c10-4252-8505-83d84ea2d945",
+      "name": "FB _LINK_EXTRACT",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1994009976,
+          "mode": "list",
+          "cachedResultName": "N8N_EMAIL",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=1994009976"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        -3280,
+        896
+      ],
+      "id": "980981e8-794c-470c-80fe-80900ce02156",
+      "name": "Get row(s) in sheet",
+      "executeOnce": false,
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "cleanedPage"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        -720,
+        848
+      ],
+      "id": "099c4ff1-c981-4549-82ea-7f3d8e4c0c6b",
+      "name": "WEBSITE_AGGREGATE"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e51773a9-0d65-44a5-9736-75ef1fc2d33f",
+              "leftValue": "={{ $json.FB_LINK }}",
+              "rightValue": 2,
+              "operator": {
+                "type": "array",
+                "operation": "lengthLt",
+                "rightType": "number"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2624,
+        352
+      ],
+      "id": "1b23d7bf-7e13-40a8-890f-4ca541efe91f",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-nano",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-NANO"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You'll be given a name of a physiotherapy clinic and a set of facebook links. Your job is to choose which one is a link to the clinic's facebook page. Output only the correct link, no justification or reasoning behind your choice.\n\nThe link you pic must fit the clinic given its name. If there are links referring to something else other than the clinic considering clinic's name, skip them.\n\nIf there are multiple links that might seem correct, choose the one that goes to the clinic's page and not a post.\n\nOutput name should be FB_LINK\n\nIf no links match, or the links refer to something else other than the clinic and its name, return null.",
+              "role": "system"
+            },
+            {
+              "content": "=Clinic's Name: {{ $('LOOP').item.json[\"Current Company\"] }}\n\nLinks: {{ $json.FB_LINK }}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        2960,
+        512
+      ],
+      "id": "4e7cbd9b-ebe8-48b6-8cdc-d5451a00881a",
+      "name": "FB_ANALYZER",
+      "retryOnFail": true,
+      "credentials": {
+        "openAiApi": {
+          "id": "4MkjXVSO56GSPTA2",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9b850ea8-3f64-48b7-a8bd-004d06bdc222",
+              "leftValue": "={{ $('FB CHECK CALL').item.json.data }}",
+              "rightValue": "deardoc",
+              "operator": {
+                "type": "string",
+                "operation": "notContains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2080,
+        640
+      ],
+      "id": "36135a78-49d2-410a-9bae-bd31cee0decd",
+      "name": "If5"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1994009976,
+          "mode": "list",
+          "cachedResultName": "N8N_EMAIL",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=1994009976"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Opener": "=DEARDOC_DETECTED",
+            "row_number": 0,
+            "Company Website": "={{ $('LOOP').item.json[\"Company Website\"] }}"
+          },
+          "matchingColumns": [
+            "Company Website"
+          ],
+          "schema": [
+            {
+              "id": "Clean Name",
+              "displayName": "Clean Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Current Company",
+              "displayName": "Current Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Links",
+              "displayName": "Links",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reviews",
+              "displayName": "Reviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Posts",
+              "displayName": "Posts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Opener",
+              "displayName": "Opener",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        2640,
+        896
+      ],
+      "id": "98d151ff-ad89-4e2a-8d81-ec780ba357b0",
+      "name": "Update row in sheet1",
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.CLEAN_LINKS }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\n  \"User-Agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\",\n  \"Accept\": \"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7\",\n  \"Accept-Language\": \"en-US,en;q=0.9\",\n  \"Accept-Encoding\": \"gzip, deflate, br\",\n  \"Sec-CH-UA\": \"\\\"Chromium\\\";v=\\\"139\\\", \\\"Not;A Brand\\\";v=\\\"99\\\", \\\"Google Chrome\\\";v=\\\"139\\\"\",\n  \"Sec-CH-UA-Mobile\": \"?0\",\n  \"Sec-CH-UA-Platform\": \"\\\"Windows\\\"\",\n  \"Sec-CH-UA-Full-Version-List\": \"\\\"Chromium\\\";v=\\\"139.0.6493.0\\\", \\\"Not;A Brand\\\";v=\\\"99.0.0.0\\\", \\\"Google Chrome\\\";v=\\\"139.0.6493.0\\\"\",\n  \"Sec-CH-UA-Form-Factors\": \"\\\"Desktop\\\"\",\n  \"Referer\": \"{{ (['https://www.google.com/', `https://www.google.com/search?q=physio+${$('first filter').item.json.City}`, 'https://maps.google.com/'])[Math.floor(Math.random() * 3)] }}\",\n  \"Upgrade-Insecure-Requests\": \"1\",\n  \"Connection\": \"keep-alive\"\n}\n",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -48,
+        1168
+      ],
+      "id": "a49f98fb-c679-410c-acf3-2b3e372eb7c3",
+      "name": "SCRAPE PAGES",
+      "retryOnFail": false,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 190559714,
+          "mode": "list",
+          "cachedResultName": "EXPORT_READY",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=190559714"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Opener": "={{ $node[\"FB IF OPENER BAD\"].json[\"text\"] }}",
+            "Email": "={{ $('LOOP').item.json.Email }}",
+            "City": "={{ $('LOOP').item.json.City }}",
+            "Country": "={{ $('LOOP').item.json.Country }}",
+            "Clean Name": "={{ $('LOOP').item.json[\"Clean Name\"] }}",
+            "Company Website": "={{ $('LOOP').item.json[\"Company Website\"] }}",
+            "Current Company": "={{ $('LOOP').item.json[\"Current Company\"] }}",
+            "Reviews": "={{ $('LOOP').item.json.Reviews }}",
+            "Posts": "={{ $node[\"Code10\"].json.posts.map((post, index) => `Post ${index + 1}:\\nDate: ${post.time}\\nLikes: ${post.likes}\\nText:\\n${post.text}`).join('\\n\\n------------------------------------\\n\\n') }}"
+          },
+          "matchingColumns": [
+            "Company Website"
+          ],
+          "schema": [
+            {
+              "id": "Clean Name",
+              "displayName": "Clean Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Current Company",
+              "displayName": "Current Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Opener",
+              "displayName": "Opener",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reviews",
+              "displayName": "Reviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Posts",
+              "displayName": "Posts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        8368,
+        -80
+      ],
+      "id": "f821b688-d6bd-495e-a19e-1e3fb0da64b8",
+      "name": "FB_OPENER_UPLOAD",
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 423855279,
+          "mode": "list",
+          "cachedResultName": "VERIF_NEEDED",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=423855279"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Reviews": "={{ $('LOOP').item.json.Reviews }}",
+            "Clean Name": "={{ $('LOOP').item.json[\"Clean Name\"] }}",
+            "City": "={{ $('LOOP').item.json.City }}",
+            "Country": "={{ $('LOOP').item.json.Country }}",
+            "Opener": "={{ $node[\"FB IF OPENER BAD\"].json[\"text\"] }}",
+            "Email": "={{ $('LOOP').item.json.Email }}",
+            "Current Company": "={{ $('LOOP').item.json[\"Current Company\"] }}",
+            "Company Website": "={{ $('LOOP').item.json[\"Company Website\"] }}",
+            "Links": "={{ $('LOOP').item.json.Links }}"
+          },
+          "matchingColumns": [
+            "Company Website"
+          ],
+          "schema": [
+            {
+              "id": "Clean Name",
+              "displayName": "Clean Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Current Company",
+              "displayName": "Current Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Links",
+              "displayName": "Links",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reviews",
+              "displayName": "Reviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Opener",
+              "displayName": "Opener",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        8384,
+        144
+      ],
+      "id": "244d1d7d-1b05-4b25-aba5-3444ed2c5da2",
+      "name": "FB_VERIF_NEEDED",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "34bd331f-abd8-4fdc-acd8-bd9d0a58f3a2",
+              "leftValue": "={{ $json[\"cleanedPage\"] }}",
+              "rightValue": "[]",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        160,
+        848
+      ],
+      "id": "36bbf133-9f50-4c3f-b077-419a6ddfb7d1",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1994009976,
+          "mode": "list",
+          "cachedResultName": "N8N_EMAIL",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=1994009976"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Opener": "404 ERROR",
+            "Company Website": "={{ $('LOOP').item.json[\"Company Website\"] }}"
+          },
+          "matchingColumns": [
+            "Company Website"
+          ],
+          "schema": [
+            {
+              "id": "Clean Name",
+              "displayName": "Clean Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Current Company",
+              "displayName": "Current Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Links",
+              "displayName": "Links",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reviews",
+              "displayName": "Reviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Posts",
+              "displayName": "Posts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Opener",
+              "displayName": "Opener",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        1680,
+        432
+      ],
+      "id": "3dc32337-1cba-4bb7-9e39-fd6e7207c7b3",
+      "name": "GOOGLE_OPENER UPLOAD1",
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $('LOOP').item.json[\"Company Website\"].trim().replace(/^(https?:\\/\\/)?/i, 'https://') }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\n  \"User-Agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36\",\n  \"Accept\": \"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7\",\n  \"Accept-Language\": \"en-US,en;q=0.9\",\n  \"Accept-Encoding\": \"gzip, deflate, br\",\n  \"Sec-CH-UA\": \"\\\"Chromium\\\";v=\\\"139\\\", \\\"Not;A Brand\\\";v=\\\"99\\\", \\\"Google Chrome\\\";v=\\\"139\\\"\",\n  \"Sec-CH-UA-Mobile\": \"?0\",\n  \"Sec-CH-UA-Platform\": \"\\\"Windows\\\"\",\n  \"Sec-CH-UA-Full-Version-List\": \"\\\"Chromium\\\";v=\\\"139.0.6493.0\\\", \\\"Not;A Brand\\\";v=\\\"99.0.0.0\\\", \\\"Google Chrome\\\";v=\\\"139.0.6493.0\\\"\",\n  \"Sec-CH-UA-Form-Factors\": \"\\\"Desktop\\\"\",\n  \"Referer\": \"{{ (['https://www.google.com/', `https://www.google.com/search?q=physio+${$('first filter').item.json.City}`, 'https://maps.google.com/'])[Math.floor(Math.random() * 3)] }}\",\n  \"Upgrade-Insecure-Requests\": \"1\",\n  \"Connection\": \"keep-alive\"\n}\n",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        944,
+        832
+      ],
+      "id": "aefbfdbf-ba74-45a3-878a-8ca965d78c98",
+      "name": "FB CHECK CALL",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": "={{ $prevNode.name === 'Split Out3' }}"
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1136,
+        896
+      ],
+      "id": "248d781e-98e5-4499-968b-2a0875905348",
+      "name": "Page By Page"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1994009976,
+          "mode": "list",
+          "cachedResultName": "N8N_EMAIL",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=1994009976"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Company Website": "={{ $('LOOP').item.json[\"Company Website\"] }}",
+            "Opener": "={{ $node[\"FB IF OPENER BAD\"].json[\"text\"] }}",
+            "Posts": "={{ $json.posts.map((post, index) => `Post ${index + 1}:\\nDate: ${post.time}\\nLikes: ${post.likes}\\nText:\\n${post.text}`).join('\\n\\n------------------------------------\\n\\n') }}"
+          },
+          "matchingColumns": [
+            "Company Website"
+          ],
+          "schema": [
+            {
+              "id": "Clean Name",
+              "displayName": "Clean Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Current Company",
+              "displayName": "Current Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Links",
+              "displayName": "Links",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reviews",
+              "displayName": "Reviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Posts",
+              "displayName": "Posts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Opener",
+              "displayName": "Opener",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        8096,
+        -80
+      ],
+      "id": "d88e20fd-288c-41c6-85d8-55d382d8718a",
+      "name": "CRM_UPDATE",
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 190559714,
+          "mode": "list",
+          "cachedResultName": "EXPORT_READY",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=190559714"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Opener": "={{ $node[\"GOOGLE If OPENER NO ERROR\"].json[\"text\"] }}",
+            "City": "={{ $('LOOP').item.json.City }}",
+            "Country": "={{ $('LOOP').item.json.Country }}",
+            "Company Website": "={{ $('LOOP').item.json[\"Company Website\"] }}",
+            "Clean Name": "={{ $('LOOP').item.json[\"Clean Name\"] }}",
+            "Email": "={{ $('LOOP').item.json.Email }}",
+            "Current Company": "={{ $('LOOP').item.json[\"Current Company\"] }}",
+            "Reviews": "={{ $('LOOP').item.json.Reviews }}"
+          },
+          "matchingColumns": [
+            "Company Website"
+          ],
+          "schema": [
+            {
+              "id": "Clean Name",
+              "displayName": "Clean Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Current Company",
+              "displayName": "Current Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Opener",
+              "displayName": "Opener",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reviews",
+              "displayName": "Reviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Posts",
+              "displayName": "Posts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        8576,
+        544
+      ],
+      "id": "d6aa72fc-105e-44a8-9a1f-ac35203c9dae",
+      "name": "GOOGLE_OPENER_UPLOAD",
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1994009976,
+          "mode": "list",
+          "cachedResultName": "N8N_EMAIL",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=1994009976"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Company Website": "={{ $('LOOP').item.json[\"Company Website\"] }}",
+            "Opener": "={{ $node[\"GOOGLE If OPENER NO ERROR\"].json[\"text\"] }}"
+          },
+          "matchingColumns": [
+            "Company Website"
+          ],
+          "schema": [
+            {
+              "id": "Clean Name",
+              "displayName": "Clean Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Current Company",
+              "displayName": "Current Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Links",
+              "displayName": "Links",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reviews",
+              "displayName": "Reviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Posts",
+              "displayName": "Posts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Opener",
+              "displayName": "Opener",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        8336,
+        544
+      ],
+      "id": "5adf86b4-d4b0-4b7b-a69d-4a75f391f726",
+      "name": "GOOGLE_CRM_UPDATE",
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1a14c70f-2f6f-460b-9b32-c47065c8c57a",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "ERROR",
+              "operator": {
+                "type": "string",
+                "operation": "startsWith"
+              }
+            },
+            {
+              "id": "e70529dd-e4d5-4672-b2ca-c0e7f8c27149",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "PASS",
+              "operator": {
+                "type": "string",
+                "operation": "startsWith"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        7840,
+        208
+      ],
+      "id": "89093887-fce0-4e92-97ad-aab685119df1",
+      "name": "FB IF OPENER BAD"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1a14c70f-2f6f-460b-9b32-c47065c8c57a",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "ERROR",
+              "operator": {
+                "type": "string",
+                "operation": "startsWith"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        8096,
+        192
+      ],
+      "id": "05557b38-0bce-4b3b-aa2d-ac5b785a3ad7",
+      "name": "IF ERROR/PASS"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ed30f642-5f71-4573-92d6-8b2ebbed5d39",
+              "leftValue": "={{ $json.FB_LINK[0] }}",
+              "rightValue": "=",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2384,
+        560
+      ],
+      "id": "dc2ffee1-f94f-4e13-a8a3-9c2d5985ee9d",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "85adfd91-6d97-48f8-b164-5d4f2ab05174",
+              "name": "url",
+              "value": "={{ $json.FB_LINK ? $json.FB_LINK : $json.message.content.FB_LINK }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3936,
+        480
+      ],
+      "id": "6e3ea6d7-e298-4c7d-b3b9-b68b47d00be1",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "options": {
+          "temperature": 0.5
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        7008,
+        384
+      ],
+      "id": "317faac3-c1be-43f9-8f63-43dd9b4c8782",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "8LLLd9zqKaSVnXnO",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        7536,
+        800
+      ],
+      "id": "9591b40c-a185-4c08-89ae-f85961a4e2a7",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "8LLLd9zqKaSVnXnO",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=<<FACEBOOK_POSTS>>\n{{ $json.posts.map((post, index) => `Post ${index + 1}:\\nDate: ${post.time}\\nLikes: ${post.likes}\\nText:\\n${post.text}`).join('\\n\\n------------------------------------\\n\\n') }}\n\n<<END-FACEBOOK_POSTS>>\n\n<<PAGES>>\n{{ $('WEBSITE_AGGREGATE').item.json.cleanedPage }}\n<<END-PAGES>>\n\nMetadata  \nCLINIC_NAME = {{ $('LOOP').item.json[\"Current Company\"] }}\nOWNER_NAME  = {{ $('LOOP').item.json[\"Clean Name\"] }}\nCURRENT DATE  = {{ $today }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=Follow all instructions literally without improvisation—treat this as a strict script.\n\nROLE:\nWrite one fast, sharp cold email opener as if you're a business-savvy peer who's known the clinic for months—and they know you. Not an outsider scraping data. You're messaging a smart, busy physio clinic owner (think: Dr. Michael Rodriguez). For context, the email is about a website-based chatbot that captures visitors to reduce admin overwhelm or catch after-hours inquiries. Don't mention the chatbot; use it only internally to select angle.\n\nRULES:\n**Data Inputs:**\n- Up to 5 recent Facebook posts (with date, likes)\n- Up to 4 website pages (with page dates/context if available)\n- Current date\n\n**Validation:** Use this three-step process. All must pass.\n1. Scan for vendor/non-clinical terms: \"management services,\" \"consulting,\" etc. Fail if found.\n2. Core Physio signals outnumber competing therapy signals. Fail otherwise.\n3. Core Physio signals ≥3. Fail otherwise.\n\nIf qualified, proceed.\n\n**Signaling & Prioritization:**\n- Choose strongest, most relevant signal (outages/closures > staff/hiring > events > patient wins).\n- If only generic fluff, PASS.\n\n**Opener Construction:**\n- Use \"you\" or \"you guys\"; never full clinic names.\n- Two sentences max, ≤35 words total.\n- No dashes; replace with periods.\n- Blank line between sentences.\n- Start with \"Saw\", \"Noticed\", or \"Caught\" only.\n- **Do NOT use personal names in the opener.**\n\n**Observation Rules:**\n- State observable facts only—never mention \"post\" or \"website\".\n- Replace specific dates with natural phrasing (\"last week\", \"recently\", \"earlier this month\").\n- Avoid obvious clinical benefits; focus on operational significance:\n  - For rare/new tech: \"one of the few around using X\" or \"started using X recently\".\n  - For workshops/events: highlight exposure, not education benefits.\n\n**Bridge Logic (Critical - Think About Admin Burden):**\n- Second sentence starts with \"Other clinics tell me\", \"Most clinic owners say\", or \"I know from other clinics\".\n- **Consider what would create more front-desk work and admin questions that a chatbot could handle:**\n- Signal-specific logic:\n  - **Staff hiring/additions** → more patients asking scheduling and insurance questions.\n  - **Workshops/events/community outreach** → more inquiries from newcomers.\n  - **New treatments/training/technology** → more questions from newcomers (about availability, cost, insurance coverage).\n  - **Outages/closures** → backlogs of calls and questions when reopening.\n  - **Patient testimonials/wins** → more inquiries from potential patients asking about services.\n- **Think: What would make the front desk busier with repetitive inquiries?**\n- End bridge sentence with \"questions\", \"calls\", \"inquiries\", or \"headaches\".\n- Do NOT use personal names inside the opener.\n\n**Style:**\n- Peer-to-peer tone, no fluff or jargon.\n- Show, don't tell.\n- Ruthlessly trim words while keeping logic.\n\n**Quality Checks (silent):**\n- Exactly two sentences, blank line between.\n- ≤35 words total.\n- Bridge phrase present and logically connects to front-desk admin burden.\n- Ends with approved pain word.\n- No dashes, no names in opener.\n- Natural time references, no clinical fluff.\n\n**Personalization:**\n- Add team size, location only if verbatim and fits naturally.\n\n**Output:**\n- Only the final opener or PASS/ERROR.\n\n**Final Rule:** If bridge logic unclear or doesn't align with front-desk admin burden, output PASS: No signal found.\n"
+            }
+          ]
+        },
+        "batching": {
+          "batchSize": 1,
+          "delayBetweenBatches": 5000
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        6880,
+        160
+      ],
+      "id": "8900c2e5-82b4-4158-97d2-739f81d23ef9",
+      "name": "FACEBOOK_OPENER"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=<<REVIEWS>>\n{{ $('LOOP').item.json.Reviews }}\n<<END-REVIEWS>>\n\n<<PAGES>>\n{{ $('WEBSITE_AGGREGATE').item.json.cleanedPage }}\n<<END-PAGES>>\n\nCLINIC_NAME = {{ $('LOOP').item.json[\"Current Company\"] }}\nOWNER_NAME  = {{ $('LOOP').item.json[\"Clean Name\"] }}\nCURRENT DATE  = {{ $today }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=ROLE:\nWrite one fast, sharp cold-email opener as if you're a savvy peer who's known the clinic for months and understands the grind behind their 5-star Google Reviews.\n\nRULES\n\nData Inputs:\n• Up to 10 recent Google reviews\n• Up to 4 website pages (with dates)\n• Current date\n\nValidation (hard stop):\nIf pages show vendor work, multi-therapy, gym, supplies, or non-patient physio focus → output ERROR: Not a match\n\nSignal & Theme Discovery:\n1. Pick the single strongest positive theme in the reviews.\n2. Count how many reviews share it:\n   • 1 mention → use singular framing (\"Saw a review about…\")\n   • 2+ mentions → use plural framing (\"Saw patients love how…\")\n3. If nothing specific → ERROR: No suitable positive review found.\n\nWebsite Scan (optional):\nGrab team size, location, or hiring only if it fits word cap.\n\nOpener Construction:\n• Two sentences max. Hard cap 35 words.\n• First sentence = compliment (front-stage).\n• Leave a blank line between sentences.\n• Second sentence = bridge with admin pain, starting with exactly one of:\n  \"Other clinics tell me\" | \"Most clinic owners say\" | \"I know from other clinics\"\n• End with questions, calls, patients, inquiries, or headaches.\n• **Do NOT use personal names in the opener.**\n\nBridge Logic (Critical - Think About Front-Desk Burden):\n- The bridge must logically connect to what creates more admin work.\n- Use theme-specific logic:\n  • **Staff praise/team growth** → more patients asking scheduling and insurance questions\n  • **Technology/treatment mentions** → more questions from newcomers (about availability, cost, coverage)\n  • **Patient success stories** → more inquiries from potential patients\n  • **Personalized care mentions** → more people calling to ask about services\n- **Think: What would make the front desk busier with repetitive inquiries that a chatbot could handle?**\n- Avoid vague phrases; use specific, logical connections.\n\nStyle & Tone:\n• Zero em-dashes or hyphen chains. If any appear, rewrite.\n• Start with \"Saw\", \"Noticed\", \"Caught\", or \"Heard\".\n• Peer-to-peer voice, no fluff, show don't tell.\n• Every word earns its place; trim to stay ≤35 words.\n\nQuality Checklist (silent):\n1. Logic correct, single theme.\n2. Bridge uses required phrase and logically connects to front-desk admin burden.\n3. Ends with approved pain word.\n4. 0 dashes, no personal names.\n5. ≤35 words total.\n6. Blank line between sentences.\n\nOutput:\n• Only the ready-to-send opener or ERROR message. No extra text.\n\nFinal Rule: If bridge logic unclear or doesn't align with front-desk admin burden, output ERROR: No suitable positive review found.\n"
+            }
+          ]
+        },
+        "batching": {
+          "batchSize": 1,
+          "delayBetweenBatches": 5000
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        7520,
+        624
+      ],
+      "id": "d4d51610-06d8-4c14-aa55-57553912a232",
+      "name": "GOOGLE_OPENER"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "824497b9-8964-48f6-bc3c-a93c994d7a69",
+              "leftValue": "={{ $json.Opener }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -3056,
+        896
+      ],
+      "id": "50bb4f22-b23d-4a35-9e8f-b3f64d78f52c",
+      "name": "first filter"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 423855279,
+          "mode": "list",
+          "cachedResultName": "VERIF_NEEDED",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=423855279"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Reviews": "={{ $('LOOP').item.json.Reviews }}",
+            "Email": "={{ $('LOOP').item.json.Email }}",
+            "City": "={{ $('LOOP').item.json.City }}",
+            "Country": "={{ $('LOOP').item.json.Country }}",
+            "Clean Name": "={{ $('LOOP').item.json[\"Clean Name\"] }}",
+            "Current Company": "={{ $('LOOP').item.json[\"Current Company\"] }}",
+            "Company Website": "={{ $('LOOP').item.json[\"Company Website\"] }}",
+            "Links": "={{ $('LOOP').item.json.Links }}",
+            "Opener": "={{ $node[\"GOOGLE If OPENER NO ERROR\"].json[\"text\"] }}"
+          },
+          "matchingColumns": [
+            "Company Website"
+          ],
+          "schema": [
+            {
+              "id": "Clean Name",
+              "displayName": "Clean Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Current Company",
+              "displayName": "Current Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Links",
+              "displayName": "Links",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reviews",
+              "displayName": "Reviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Opener",
+              "displayName": "Opener",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        8336,
+        704
+      ],
+      "id": "9d1f87f3-c0b4-4dd4-a128-d5277b27ce65",
+      "name": "GOOGLE_CRM_UPDATE1",
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "CLEAN_LINKS",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -1488,
+        896
+      ],
+      "id": "0d72bf82-7139-41fa-beef-46aac4f96f3a",
+      "name": "Split Out3"
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "FB_LINK"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        816
+      ],
+      "id": "f2a8b857-ee80-41e4-a450-fd30dbc192e8",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        3632,
+        512
+      ],
+      "id": "8df03702-506e-428c-aa73-58945c3d7dda",
+      "name": "Merge FB LINK CHOICE"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "let rawLinks = [];\nlet foundPath = 'none';\n\ntry {\n  // Hypothesis 1: The data is correct: { json: { links: [...] } }\n  if ($json && Array.isArray($json.Links)) {\n    rawLinks = $json.Links;\n    foundPath = 'CORRECT: $json.Links';\n  }\n  // Hypothesis 2: The data is malformed: { links: [...] }\n  else if ($item && Array.isArray($item.Links)) {\n    rawLinks = $item.Links;\n    foundPath = 'MALFORMED: $item.Links';\n  }\n  // Hypothesis 3: It's a stringified array somewhere\n  else if ($json && typeof $json.Links === 'string') {\n    rawLinks = JSON.parse($json.Links);\n    foundPath = 'STRING: Parsed from $json.Links';\n  }\n  // Add more hypotheses here if needed, but one of these should hit.\n\n} catch (error) {\n  // This catch block makes the node un-crashable.\n  const errorOutput = {\n    json: {\n      CRASH_ERROR: `The code crashed with error: ${error.message}`,\n      INCOMING_ITEM_THAT_CAUSED_CRASH: $item,\n    }\n  };\n  return errorOutput;\n}\n\n\n// --- Your filtering logic ---\nconst junkPatterns = [\n  /\\.xml$/i, /wp-sitemap/, /^\\/\\?/, /\\/author\\//, /\\/category\\//,\n  /thank-you/, /\\/wp-json\\//, /\\/feed\\//, /oceanwp_library/, /sitemap_index/,\n  /faq-sitemap/, /location-sitemap/, /newsletter-sitemap/, /job-sitemap/,\n  /our_team-sitemap/, /post-sitemap/, /ebook-sitemap/, /page-sitemap/,\n  /\\.pdf$/i\n];\nconst demoSlugs = [\n  'cras-metus-sed-aliquet-risus-a-tortor', 'quis-ligula-lacinia-aliquet-mauris',\n  'nulla-metus-metus-ullamcorper', 'luctus-non-massa-fusce-ac-turpis',\n  'pellentesque-nibh-aenean-quam', 'conubia-nostra-per-inceptos',\n];\nconst CLEAN_LINKS = rawLinks\n  .filter(link => typeof link === 'string' && link.trim() !== '')\n  .filter(link => !junkPatterns.some(pattern => pattern.test(link)))\n  .filter(link => !demoSlugs.some(slug => link.includes(slug)));\n// --- End filtering logic ---\n\n\n// --- Build the definitive diagnostic output ---\nconst diagnosticOutput = {\n  json: {\n    // This tells us EXACTLY what path worked.\n    FOUND_PATH: foundPath,\n    // How many links we started with.\n    RAW_LINK_COUNT: rawLinks.length,\n    // How many links we ended with.\n    CLEAN_LINK_COUNT: CLEAN_LINKS.length,\n    // The final, cleaned list of links.\n    CLEAN_LINKS: CLEAN_LINKS,\n    // Uncomment the line below to see the full original item if you still have issues.\n    // FULL_INCOMING_ITEM: $item,\n  }\n};\n\nreturn diagnosticOutput;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2336,
+        896
+      ],
+      "id": "d9dee337-f6b3-48dc-abc9-3815e0d8776c",
+      "name": "CLEAN_LINKS1"
+    },
+    {
+      "parameters": {
+        "compare": "selectedFields",
+        "fieldsToCompare": "[\"Company Website\"]",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        -2848,
+        896
+      ],
+      "id": "0676ff53-80f7-43e6-acf8-259b31ea281f",
+      "name": "Remove Duplicates"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1994009976,
+          "mode": "list",
+          "cachedResultName": "N8N_EMAIL",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=1994009976"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Opener": "={{ $node[\"FB IF OPENER BAD\"].json[\"text\"] }}",
+            "Company Website": "={{ $('LOOP').item.json[\"Company Website\"] }}",
+            "row_number": 0
+          },
+          "matchingColumns": [
+            "Company Website"
+          ],
+          "schema": [
+            {
+              "id": "Clean Name",
+              "displayName": "Clean Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Current Company",
+              "displayName": "Current Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Links",
+              "displayName": "Links",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reviews",
+              "displayName": "Reviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Posts",
+              "displayName": "Posts",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Opener",
+              "displayName": "Opener",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        8592,
+        144
+      ],
+      "id": "d1126f70-20b0-4231-a3f2-f98b338917f7",
+      "name": "FB_VERIF_NEEDED1",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1994009976,
+          "mode": "list",
+          "cachedResultName": "N8N_EMAIL",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d//edit#gid=1994009976"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Company Website": "={{ $('Remove Duplicates').item.json[\"Company Website\"] }}",
+            "Opener": "={{ $node[\"GOOGLE If OPENER NO ERROR\"].json[\"text\"] }}"
+          },
+          "matchingColumns": [
+            "Company Website"
+          ],
+          "schema": [
+            {
+              "id": "Clean Name",
+              "displayName": "Clean Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Current Company",
+              "displayName": "Current Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Website",
+              "displayName": "Company Website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "City",
+              "displayName": "City",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Links",
+              "displayName": "Links",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reviews",
+              "displayName": "Reviews",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Opener",
+              "displayName": "Opener",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        8576,
+        704
+      ],
+      "id": "97226d16-2cd9-487f-bb48-6d1101390cf4",
+      "name": "GOOGLE_CRM_UPDATE4",
+      "credentials": {
+        "googleApi": {
+          "id": "ZCNZOVYIpQBGJcPZ",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {        "url": "https://api.apify.com/v2/acts/apify~facebook-posts-scraper/run-sync-get-dataset-items?token={{ $json.apify_token }}",
+
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n    \"captionText\": false,\n    \"onlyPostsNewerThan\": \"4 months\",\n    \"resultsLimit\": 8,\n    \"startUrls\": [\n        {\n            \"url\": \"{{$json[\"url\"].replace(/^\\[\"|\"\\]$/g, '')}}\",\n            \"method\": \"GET\"\n        }\n    ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4912,
+        224
+      ],
+      "id": "22f292ed-3202-4ad6-b40f-39add170f0ce",
+      "name": "FB_POSTS",
+      "executeOnce": false,
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "maxTries": 5
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "86526f8e-df79-4e62-ad70-2debe4720a82",
+              "leftValue": "={{ $json[\"url\"] }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4176,
+        368
+      ],
+      "id": "46e6690e-7287-462f-8741-58166d312d6b",
+      "name": "GOOGLE OR FB"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  const data = item.json;\n  data.mergeKey = data.facebookUrl || data.url || null;\n  if (data.mergeKey) {\n    // Normalize it (remove trailing slashes, lowercase)\n    data.mergeKey = data.mergeKey.toLowerCase().replace(/\\/$/, '');\n  }\n  return { json: data };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5184,
+        224
+      ],
+      "id": "a64eeff8-f779-43f0-aebc-d790c9a024f5",
+      "name": "Code8"
+    },
+    {
+      "parameters": {
+        "fieldsToSummarize": {
+          "values": [
+            {
+              "aggregation": "concatenate",
+              "field": "text",
+              "includeEmpty": true,
+              "separateBy": "other",
+              "customSeparator": "//separator//"
+            },
+            {
+              "aggregation": "concatenate",
+              "field": "time",
+              "includeEmpty": true
+            },
+            {
+              "aggregation": "concatenate",
+              "field": "likes",
+              "includeEmpty": true,
+              "separateBy": "other",
+              "customSeparator": "//separator//"
+            }
+          ]
+        },
+        "fieldsToSplitBy": "mergeKey",
+        "options": {
+          "outputFormat": "separateItems",
+          "skipEmptySplitFields": true
+        }
+      },
+      "type": "n8n-nodes-base.summarize",
+      "typeVersion": 1.1,
+      "position": [
+        5952,
+        320
+      ],
+      "id": "ed267d50-b3f5-422a-8c37-a077a8551aec",
+      "name": "Summarize2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "794c7c7b-67cd-4372-a0e0-4677eddab9a2",
+              "leftValue": "={{ $json.concatenated_text }}",
+              "rightValue": "undefined",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6160,
+        320
+      ],
+      "id": "7c03f84b-ec57-42fe-b41c-f2fb456c8e9b",
+      "name": "If10"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "/*\n * Code node – “Run once for each item”\n * Keeps ONLY the parsed posts array (plus mergeKey if you still need it).\n */\n\nconst src = $json;      // incoming item\n\n// split the three long strings\nconst texts = src.concatenated_text.split('//separator//');\nconst times = src.concatenated_time.split(',');\nconst likes = src.concatenated_likes.split('//separator//');\n\n// build the posts array\nconst len   = Math.min(texts.length, times.length, likes.length);\nconst posts = Array.from({ length: len }, (_, i) => ({\n  text:  texts[i].trim(),\n  time:  times[i].trim(),\n  likes: Number(likes[i].trim()),\n}));\n\n// RETURN ONE OBJECT. Everything not listed here is gone.\nreturn {\n  json: {\n    posts,              // ← the only data you asked to keep\n    // mergeKey: src.mergeKey,   // uncomment if you still need it downstream\n  },\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6480,
+        160
+      ],
+      "id": "f9240645-07d2-4e8c-95f2-da15a5755f43",
+      "name": "Code10",
+      "executeOnce": false
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        9040,
+        -416
+      ],
+      "id": "23c5c897-22e2-4a67-b86c-ebcb97343949",
+      "name": "No Operation, do nothing"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -2640,
+        896
+      ],
+      "id": "1b0ad2e8-4175-427d-a3ba-e7eb76033ca6",
+      "name": "LOOP"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f136e828-5660-4afd-ba7b-d620fa8c605b",
+              "leftValue": "={{ $json.mergeKey }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "0db497f0-fdfb-4cd7-a7bb-cdd475d2ce8d",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "lte"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5488,
+        224
+      ],
+      "id": "7b8532f5-9ccd-4a76-9711-3f608f599ead",
+      "name": "If3"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1a14c70f-2f6f-460b-9b32-c47065c8c57a",
+              "leftValue": "={{ $json[\"text\"] }}",
+              "rightValue": "ERROR",
+              "operator": {
+                "type": "string",
+                "operation": "notStartsWith"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        7968,
+        624
+      ],
+      "id": "547c9cd4-9308-46c1-a058-403cfafebdde",
+      "name": "GOOGLE If OPENER NO ERROR"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Markdown": {
+      "main": [
+        [
+          {
+            "node": "CleanPage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CleanPage": {
+      "main": [
+        [
+          {
+            "node": "Page By Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FB _LINK_EXTRACT": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "first filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WEBSITE_AGGREGATE": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Merge FB LINK CHOICE",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "FB_ANALYZER",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FB_ANALYZER": {
+      "main": [
+        [
+          {
+            "node": "Merge FB LINK CHOICE",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "If5": {
+      "main": [
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update row in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SCRAPE PAGES": {
+      "main": [
+        [
+          {
+            "node": "Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Page By Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FB_VERIF_NEEDED": {
+      "main": [
+        [
+          {
+            "node": "FB_VERIF_NEEDED1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FB_OPENER_UPLOAD": {
+      "main": [
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "GOOGLE_OPENER UPLOAD1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "FB CHECK CALL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GOOGLE_OPENER UPLOAD1": {
+      "main": [
+        [
+          {
+            "node": "LOOP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet1": {
+      "main": [
+        [
+          {
+            "node": "LOOP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FB CHECK CALL": {
+      "main": [
+        [
+          {
+            "node": "FB _LINK_EXTRACT",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GOOGLE_OPENER UPLOAD1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Page By Page": {
+      "main": [
+        [
+          {
+            "node": "WEBSITE_AGGREGATE",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SCRAPE PAGES",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CRM_UPDATE": {
+      "main": [
+        [
+          {
+            "node": "FB_OPENER_UPLOAD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GOOGLE_OPENER_UPLOAD": {
+      "main": [
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GOOGLE_CRM_UPDATE": {
+      "main": [
+        [
+          {
+            "node": "GOOGLE_OPENER_UPLOAD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FB IF OPENER BAD": {
+      "main": [
+        [
+          {
+            "node": "IF ERROR/PASS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "CRM_UPDATE",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF ERROR/PASS": {
+      "main": [
+        [
+          {
+            "node": "FB_VERIF_NEEDED",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GOOGLE_OPENER",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GOOGLE_OPENER",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "GOOGLE OR FB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "FACEBOOK_OPENER",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "GOOGLE_OPENER",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FACEBOOK_OPENER": {
+      "main": [
+        [
+          {
+            "node": "FB IF OPENER BAD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GOOGLE_OPENER": {
+      "main": [
+        [
+          {
+            "node": "GOOGLE If OPENER NO ERROR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "first filter": {
+      "main": [
+        [
+          {
+            "node": "Remove Duplicates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out3": {
+      "main": [
+        [
+          {
+            "node": "Page By Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "If5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge FB LINK CHOICE": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CLEAN_LINKS1": {
+      "main": [
+        [
+          {
+            "node": "Split Out3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Duplicates": {
+      "main": [
+        [
+          {
+            "node": "LOOP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GOOGLE_CRM_UPDATE1": {
+      "main": [
+        [
+          {
+            "node": "GOOGLE_CRM_UPDATE4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FB_POSTS": {
+      "main": [
+        [
+          {
+            "node": "Code8",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GOOGLE OR FB": {
+      "main": [
+        [
+          {
+            "node": "FB_POSTS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GOOGLE_OPENER",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code8": {
+      "main": [
+        [
+          {
+            "node": "If3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize2": {
+      "main": [
+        [
+          {
+            "node": "If10",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If10": {
+      "main": [
+        [
+          {
+            "node": "Code10",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GOOGLE_OPENER",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code10": {
+      "main": [
+        [
+          {
+            "node": "FACEBOOK_OPENER",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FB_VERIF_NEEDED1": {
+      "main": [
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GOOGLE_CRM_UPDATE4": {
+      "main": [
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Operation, do nothing": {
+      "main": [
+        [
+          {
+            "node": "LOOP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LOOP": {
+      "main": [
+        [],
+        [
+          {
+            "node": "CLEAN_LINKS1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If3": {
+      "main": [
+        [
+          {
+            "node": "GOOGLE_OPENER",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Summarize2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GOOGLE If OPENER NO ERROR": {
+      "main": [
+        [
+          {
+            "node": "GOOGLE_CRM_UPDATE",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GOOGLE_CRM_UPDATE1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "d65d3808-e0bb-4ebd-b850-f0caff2a794a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f9d9f220da8d492a475ca89dbc59b44a2dd3db1c621f47d4ce47cd486baf91f3"
+  },
+  "id": "zcQb0fqpzK2LCWmS",
+  "tags": []
+}
