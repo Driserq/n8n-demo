@@ -1,219 +1,102 @@
-# Workflow Kwalifikacji i Wzbogacania Leadów ----Scroll for English----
+# Qualifier Workflow
 
-![Qualifier Screenshot](./qualifier.png)
+Second stage of the n8n pipeline. Takes pre-filtered Google Maps leads from the scraper, maps each lead's website with Firecrawl, picks the few subpages most likely to contain owner or team info, and runs the aggregated text through Gemini against a strict disqualification script.
 
-**Nazwa Workflow:** `Qualifier`
-**Trigger:** Uruchamiany przez workflow `Scraper-Sheets` (Sub-workflow).
-
-Ten workflow działa jak "mózg" całej operacji. Pobiera surowe leady biznesowe, mapuje ich strony www, by znaleźć zakładki o zespole/o nas, scrapuje te konkretne podstrony i używa AI do ścisłej kwalifikacji biznesu oraz identyfikacji właściciela.
+Sanitized public extract of a private project. Commit history lives in the private source repo.
 
 ---
 
-## Faza 1: Przygotowanie i Routing
+## Scope & status
 
-**1. Źródło Wejściowe**
-* **Node:** `Get row(s) in sheet`
-* **Źródło:** Google Sheet `CRM`.
-* **Logika:** Pobiera istniejące wiersze do przetworzenia.
+Sub-workflow — triggered by the scraper workflow upstream via `Execute Workflow`. This is the expensive stage (two LLMs, Firecrawl, multiple HTTP scrapes per lead), so it only runs on rows that have already cleared the cheap filters.
 
-**2. Filtrowanie**
-* **Node:** `Filter`
-* **Warunek:** Sprawdza, czy kolumna **"Clean Name"** jest `Pusta`.
-* **Cel:** Zapewnia, że workflow przetwarza tylko nowe, niezweryfikowane leady, pomijając te już przeanalizowane.
-
-**3. Walidacja Strony**
-* **Node:** `If2`
-* **Logika:** Sprawdza, czy pole `Company Website` istnieje.
-    * **Brak Strony:** Aktualizuje wiersz wpisem "NO_WEBSITE" i zatrzymuje się.
-    * **Strona Istnieje:** Przechodzi do Fazy 2.
+AI-assisted during development (Claude Code for scaffolding and iteration). The disqualification rules, the page-selection prompt, and the owner cross-reference logic are my design and were tuned iteratively on real leads.
 
 ---
 
-## Faza 2: Zbieranie Wywiadu (Nawigacja)
+## Why this stage exists
 
-Zamiast scrapować tylko stronę główną, ten workflow używa dwuetapowego procesu AI, aby znaleźć *właściwe* podstrony (np. "Poznaj Zespół" czy "O Nas").
+The whole pipeline is looking for independent physiotherapy clinic owners — not chains, not franchises, not vendor platforms that happen to use the right keywords in their copy. That call can't be made from Google Maps metadata alone; you have to actually read the site.
 
-### 1. Mapowanie Strony
-* **Narzędzie:** `Firecrawl` (Self-hosted lub Cloud)
-* **Endpoint:** `POST /v1/map`
-* **Akcja:** Crawluje docelową domenę i zwraca listę WSZYSTKICH dostępnych adresów URL na stronie.
-
-### 2. Inteligentna Selekcja Stron
-* **Node:** `PAGE_SELECTOR`
-* **Model:** OpenAI (alias `gpt-5-nano` w n8n)
-* **Logika Promptu:**
-    * Wejście: Lista wszystkich URL-i z Firecrawl.
-    * Zadanie: Wybierz **Top 5** URL-i, które najprawdopodobniej zawierają info o właścicielu/personelu.
-    * Zasady: Priorytetyzuj "About", "Team", "Staff", "Leadership". Ignoruj "Login", "Blog", "Contact".
+But reading every page of every site with an LLM is wasteful. Most of a clinic's site is services and booking copy. Owner and team info, if it exists at all, lives on one to three specific pages. So this workflow has a cheap routing step before the expensive analysis step.
 
 ---
 
-## Faza 3: Głęboki Scraping i Czyszczenie
+## Architecture
 
-**1. Pętla Wykonawcza**
-* **Node:** `Page By Page`
-* **Akcja:** Iteruje przez 5 wybranych adresów URL.
+![Qualifier workflow](./qualifier.png)
 
-**2. Ekstrakcja**
-* **Node:** `SCRAPE PAGES`
-* **Metoda:** HTTP GET z nagłówkami przeglądarki (User-Agent spoofing).
-* **Konwersja:** Node `Markdown` konwertuje HTML na tekst.
+### Input gating
 
-**3. Czyszczenie**
-* **Node:** `CleanPage` (Javascript)
-* **Logika:** Używa Regexa do wycięcia menu nawigacyjnego, stopek, praw autorskich i linków do social mediów, aby zredukować zużycie tokenów i szum.
+- Reads rows from the `CRM` sheet where the `Clean Name` column is empty (so the workflow never re-processes a lead)
+- If `Company Website` is empty, marks the row `NO_WEBSITE` and stops
 
-**4. Agregacja**
-* **Node:** `WEBSITE_AGGREGATE`
-* **Akcja:** Łączy wyczyszczony tekst ze wszystkich 5 stron w jeden blok kontekstowy.
+### Page selection — cheap model
 
----
+- **Firecrawl** (`POST /v1/map`) crawls the target domain and returns every URL it can reach
+- A cheap model (`gpt-5-nano`) receives the full URL list and picks the top 5 URLs most likely to contain owner or team info — prioritises `/about`, `/team`, `/staff`, `/leadership` and ignores `/login`, `/blog`, `/contact`
+- This step exists purely to avoid running Gemini on 40 pages of pricing and booking copy
 
-## Faza 4: "Sędzia" (Analiza AI)
+### Page scraping — targeted
 
-**Node:** `QUALIFIER`
-**Model:** Google Gemini (`gemini-2.0-flash`)
-**Temperatura:** `0.2` (Ścisła)
+- Loops over the 5 selected URLs
+- `HTTP GET` with browser User-Agent headers, HTML → Markdown via n8n's `Markdown` node
+- A small JS `Code` node strips navigation, footers, copyright lines, and social links — the Markdown conversion leaves a lot of boilerplate that would eat tokens at the next step
+- Aggregates the cleaned text from all 5 pages into one context block
 
-AI analizuje zagregowany tekst strony + opinie z Google Maps używając ścisłego skryptu walidacyjnego.
+### Qualification — Gemini with a script
 
-### Logika Walidacji
-1.  **Twarde Dyskwalifikatory:**
-    * Odrzuca: Vendorów, firmy konsultingowe, franczyzy i sieciówki (>15 lokalizacji).
-2.  **Dominacja Sygnału:**
-    * Upewnia się, że słowa kluczowe "Fizjoterapia" przeważają nad ogólnymi "Terapia" (np. logopedia, terapia zajęciowa).
-3.  **Identyfikacja Właściciela:**
-    * Skanuje w poszukiwaniu "Owner", "Founder", "CEO".
-    * **Cross-Reference:** Sprawdza, czy nazwiska wspomniane w opiniach (np. "Dr Smith jest super") pasują do nazwisk znalezionych na stronie.
+- **Google Gemini** (`gemini-2.0-flash`, temperature `0.2`) takes the aggregated Markdown plus the Google Maps reviews and applies three checks:
+  1. **Hard disqualifiers** — rejects vendors, consulting firms, franchises, and chains with more than 15 locations
+  2. **Signal dominance** — physiotherapy keywords must outweigh generic "therapy" (speech, occupational, mental health) so the workflow doesn't accidentally qualify the wrong discipline
+  3. **Owner identification** — must find `Owner` / `Founder` / `CEO` in the site text, then cross-reference against names praised in Google reviews before returning a name
+- Returns either the owner's full name or a standardised SKIP reason (`SKIP: Chain clinic`, `SKIP: Cannot verify owner from website data`, `SKIP: Insufficient depth in physical therapy services`, etc.)
 
-### Wyjścia (Outputs)
-* **Sukces:** Zwraca **Imię i Nazwisko Właściciela** (np. "Sarah Johnson").
-* **Porażka (SKIP):** Zwraca ustandaryzowany powód odrzucenia:
-    * `SKIP: Chain clinic`
-    * `SKIP: Insufficient depth in physical therapy services`
-    * `SKIP: Cannot verify owner from website data`
+### Routing
+
+| Outcome | Destination sheet | Data recorded |
+| --- | --- | --- |
+| Qualified | `THE QUALIFIER` | Owner name, website, reviews, city, country |
+| Disqualified | `VERIF_NEEDED` | SKIP reason, website, reviews |
+| Either way | `CRM` (main sheet) | Status update, so the lead never reprocesses |
 
 ---
 
-## Faza 5: Routing i Storage
+## Why the two-step AI (cheap router + strict judge)
 
-Workflow kieruje wynik do różnych arkuszy w oparciu o decyzję AI.
+The naive version is to dump the whole site into Gemini and let it figure out what matters. That works but burns tokens on navigation, pricing, archive pages, and blog posts. Splitting it into "pick the pages, then read the pages" means Gemini sees a tighter context and the cheap model absorbs the routing cost.
 
-**Node Decyzyjny:** `If1` (Sprawdza, czy wynik zaczyna się od "SKIP")
-
-| Wynik | Arkusz Docelowy | Zapisane Dane |
-| :--- | :--- | :--- |
-| **Zakwalifikowany** | `THE QUALIFIER` | Imię Właściciela, Strona, Opinie, Miasto, Kraj |
-| **Zdyskwalifikowany** | `VERIF_NEEDED` | Powód SKIP, Strona, Opinie |
-| **Aktualizacja Statusu** | `CRM` (Arkusz Główny) | Aktualizuje główną listę wynikiem, aby zapobiec ponownemu przetwarzaniu. |
-
-
-
-
-
-# Lead Qualification & Enrichment Workflow
-
-**Workflow Name:** `Qualifier`
-**Trigger:** Executed by the `Scraper-Sheets` workflow (Sub-workflow).
-
-This workflow acts as the "brain" of the operation. It takes raw business leads, maps their websites to find staff/about pages, scrapes those specific pages, and uses AI to strictly qualify the business and identify the owner.
+The owner cross-reference between site text and review names was added after seeing Gemini confidently return names that only appeared in reviews — which doesn't prove ownership, just that a practitioner gets praised. Requiring the name to also appear on the site killed that failure mode.
 
 ---
 
-## Phase 1: Preparation & Routing
+## What's deliberately not here
 
-**1. Input Source**
-* **Node:** `Get row(s) in sheet`
-* **Source:** Google Sheet `CRM`.
-* **Logic:** Fetches existing rows to process.
-
-**2. Filtering**
-* **Node:** `Filter`
-* **Condition:** Checks if the column **"Clean Name"** is `Empty`.
-* **Purpose:** Ensures the workflow only processes new, unverified leads, skipping those already analyzed.
-
-**3. Website Validation**
-* **Node:** `If2`
-* **Logic:** Checks if the `Company Website` field exists.
-    * **No Website:** Updates the row with "NO_WEBSITE" and stops.
-    * **Has Website:** Proceeds to Phase 2.
+- No automated test harness — verified by running against a set of known-good and known-bad leads
+- No retry on Firecrawl failures — a failed map call sends the lead to `VERIF_NEEDED`
+- No PII storage beyond what Google Maps already exposes publicly
+- No caching of Firecrawl results — re-qualifying a lead re-crawls
 
 ---
 
-## Phase 2: Intelligence Gathering (Navigation)
-
-Instead of scraping just the homepage, this workflow uses a two-step AI process to find the *right* pages (e.g., "Meet the Team" or "About Us").
-
-### 1. Site Mapping
-* **Tool:** `Firecrawl` (Self-hosted or Cloud)
-* **Endpoint:** `POST /v1/map`
-* **Action:** Crawls the target domain and returns a list of ALL accessible URLs on the site.
-
-### 2. Intelligent Page Selection
-* **Node:** `PAGE_SELECTOR`
-* **Model:** OpenAI (`gpt-5-nano` alias in n8n)
-* **Prompt Logic:**
-    * Input: List of all URLs from Firecrawl.
-    * Task: Select **Top 5** URLs most likely to contain owner/staff info.
-    * Rules: Prioritize "About", "Team", "Staff", "Leadership". Ignore "Login", "Blog", "Contact".
-
 ---
 
-## Phase 3: Deep Scraping & Cleaning
+# 🇵🇱 Wersja polska
 
-**1. Execution Loop**
-* **Node:** `Page By Page`
-* **Action:** Iterates through the 5 selected URLs.
+Drugi etap pipeline'u n8n. Bierze wstępnie przefiltrowane leady ze scrapera, mapuje stronę każdego z nich przez Firecrawl, wybiera te podstrony, które najpewniej zawierają informacje o właścicielu lub zespole, i analizuje ich treść przez Gemini według ścisłego zestawu reguł.
 
-**2. Extraction**
-* **Node:** `SCRAPE PAGES`
-* **Method:** HTTP GET with browser headers (User-Agent spoofing).
-* **Conversion:** `Markdown` node converts HTML to text.
+## Po co ten etap
 
-**3. Cleaning**
-* **Node:** `CleanPage` (Javascript)
-* **Logic:** Uses Regex to strip navigation menus, footers, copyright text, and social media links to reduce token usage and noise.
+Cały pipeline szuka niezależnych właścicieli klinik fizjoterapii — nie sieciówek, nie franczyz, nie platform vendorów, które używają odpowiednich słów kluczowych. Tego nie da się rozstrzygnąć z samych metadanych Google Maps, trzeba przeczytać stronę. Ale wrzucanie całej strony do LLM to marnotrawstwo — informacje o właścicielu (jeśli w ogóle istnieją) są na 1–3 konkretnych podstronach. Stąd tani model wybiera podstrony, a droższy model je waliduje.
 
-**4. Aggregation**
-* **Node:** `WEBSITE_AGGREGATE`
-* **Action:** Combines the cleaned text from all 5 pages into a single context block.
+## Jak to działa
 
----
+Firecrawl mapuje całą domenę → tani model (`gpt-5-nano`) wybiera 5 URL-i najprawdopodobniej zawierających informacje o właścicielu lub zespole → te 5 stron zostaje zescrapowanych z nagłówkami przeglądarki, zamienionych na Markdown i oczyszczonych z boilerplate'u → Gemini (`gemini-2.0-flash`, temperatura 0.2) stosuje trzy twarde reguły: dyskwalifikatory, dominacja fizjoterapii nad innymi terapiami, weryfikacja właściciela przez porównanie nazwisk ze strony z nazwiskami z recenzji → wynik trafia do `THE QUALIFIER` albo `VERIF_NEEDED`, a `CRM` dostaje aktualizację statusu.
 
-## Phase 4: The "Judge" (AI Analysis)
+## Stack
 
-**Node:** `QUALIFIER`
-**Model:** Google Gemini (`gemini-2.0-flash`)
-**Temperature:** `0.2` (Strict)
+n8n (self-hosted, Docker) · Firecrawl · OpenAI `gpt-5-nano` · Google Gemini `gemini-2.0-flash` · Google Sheets
 
-The AI analyzes the aggregated website text + Google Maps reviews using a strict validation script.
+## License
 
-### Validation Logic
-1.  **Hard Disqualifiers:**
-    * Rejects: Vendors, consulting firms, franchises, and chains (>15 locations).
-2.  **Signal Dominance:**
-    * Ensures "Physical Therapy" keywords outnumber generic "Therapy" keywords (e.g., Speech, Occupational).
-3.  **Owner Identification:**
-    * Scans for "Owner", "Founder", "CEO".
-    * **Cross-Reference:** Checks if names mentioned in reviews (e.g., "Dr. Smith is great") match names found on the website.
-
-### Outputs
-* **Success:** Returns the **Owner's Name** (e.g., "Sarah Johnson").
-* **Failure (SKIP):** Returns a standardized rejection reason:
-    * `SKIP: Chain clinic`
-    * `SKIP: Insufficient depth in physical therapy services`
-    * `SKIP: Cannot verify owner from website data`
-
----
-
-## Phase 5: Routing & Storage
-
-The workflow routes the result to different sheets based on the AI's decision.
-
-**Decision Node:** `If1` (Checks if result starts with "SKIP")
-
-| Outcome | Destination Sheet | Data Recorded |
-| :--- | :--- | :--- |
-| **Qualified** | `THE QUALIFIER` | Owner Name, Website, Reviews, City, Country |
-| **Disqualified** | `VERIF_NEEDED` | The SKIP reason, Website, Reviews |
-| **Status Update** | `CRM` (Main Sheet) | Updates the main list with the finding to prevent re-processing. |
+Source-available for reference. Not licensed for redistribution or commercial use.
