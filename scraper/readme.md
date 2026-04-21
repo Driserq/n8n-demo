@@ -1,219 +1,84 @@
-# Workflow Kwalifikacji i Wzbogacania Leadów ---Scroll for English---
+# Scraper & Filter Workflow (Scraper_Sheets)
 
-![Scraper Screenshot](./scraper.png)
+First stage of the n8n pipeline. Ingests raw Google Maps output from a Dockerized scraper, drops anything that obviously isn't a lead, trims review payloads down to what the later stages actually use, appends survivors to the CRM sheet, and hands control to the qualifier workflow.
 
-**Nazwa Workflow:** `New_Qualifier`
-**Trigger:** Uruchamiany przez workflow `Scraper-Sheets` (Sub-workflow).
-
-Ten workflow działa jak "mózg" całej operacji. Pobiera surowe leady biznesowe, inteligentnie mapuje ich strony www, by znaleźć zakładki o zespole/o nas, scrapuje te konkretne podstrony i używa AI do ścisłej kwalifikacji biznesu oraz identyfikacji właściciela.
+Sanitized public extract of a private project. Commit history lives in the private source repo.
 
 ---
 
-## Faza 1: Przygotowanie i Routing
+## Scope & status
 
-**1. Źródło Wejściowe**
-* **Node:** `Get row(s) in sheet`
-* **Źródło:** Google Sheet `CRM`.
-* **Logika:** Pobiera istniejące wiersze do przetworzenia.
-
-**2. Filtrowanie**
-* **Node:** `Filter`
-* **Warunek:** Sprawdza, czy kolumna **"Clean Name"** jest `Pusta`.
-* **Cel:** Zapewnia, że workflow przetwarza tylko nowe, niezweryfikowane leady, pomijając te już przeanalizowane.
-
-**3. Walidacja Strony**
-* **Node:** `If2`
-* **Logika:** Sprawdza, czy pole `Company Website` istnieje.
-    * **Brak Strony:** Aktualizuje wiersz wpisem "NO_WEBSITE" i zatrzymuje się.
-    * **Strona Istnieje:** Przechodzi do Fazy 2.
+Part of a three-workflow n8n pipeline, self-hosted on Docker. This is the cheap upfront stage: no LLM calls, no external APIs beyond the Sheets write. All logic is regex, JSON parsing, and three filter conditions. Ran in production on real lead batches long enough to validate the pipeline end-to-end.
 
 ---
 
-## Faza 2: Zbieranie Wywiadu (Nawigacja)
+## Why this is the first stage
 
-Zamiast scrapować tylko stronę główną, ten workflow używa dwuetapowego procesu AI, aby znaleźć *właściwe* podstrony (np. "Poznaj Zespół" czy "O Nas").
+The two workflows downstream spend real money — Firecrawl calls, OpenAI routing, Gemini qualification and generation, Apify for Facebook. If every Google Maps row reached them, the per-batch bill would be absurd and most of the spend would be wasted on leads that fail at the first obvious check.
 
-### 1. Mapowanie Strony
-* **Narzędzie:** `Firecrawl` (Self-hosted lub Cloud)
-* **Endpoint:** `POST /v1/map`
-* **Akcja:** Crawluje docelową domenę i zwraca listę WSZYSTKICH dostępnych adresów URL na stronie.
-
-### 2. Inteligentna Selekcja Stron
-* **Node:** `PAGE_SELECTOR`
-* **Model:** OpenAI (alias `gpt-5-nano` w n8n)
-* **Logika Promptu:**
-    * Wejście: Lista wszystkich URL-i z Firecrawl.
-    * Zadanie: Wybierz **Top 5** URL-i, które najprawdopodobniej zawierają info o właścicielu/personelu.
-    * Zasady: Priorytetyzuj "About", "Team", "Staff", "Leadership". Ignoruj "Login", "Blog", "Contact".
+The rule is: cheap logic first, expensive logic only on rows that survive. The filters here are deliberately dumb — no model, no judgement, just three hard gates.
 
 ---
 
-## Faza 3: Głęboki Scraping i Czyszczenie
+## Architecture
 
-**1. Pętla Wykonawcza**
-* **Node:** `Page By Page`
-* **Akcja:** Iteruje przez 5 wybranych adresów URL.
+![Scraper workflow](./scraper.png)
 
-**2. Ekstrakcja**
-* **Node:** `SCRAPE PAGES`
-* **Metoda:** HTTP GET z nagłówkami przeglądarki (User-Agent spoofing).
-* **Konwersja:** Node `Markdown` konwertuje HTML na tekst.
-
-**3. Czyszczenie**
-* **Node:** `CleanPage` (Javascript)
-* **Logika:** Używa Regexa do wycięcia menu nawigacyjnego, stopek, praw autorskich i linków do social mediów, aby zredukować zużycie tokenów i szum.
-
-**4. Agregacja**
-* **Node:** `WEBSITE_AGGREGATE`
-* **Akcja:** Łączy wyczyszczony tekst ze wszystkich 5 stron w jeden blok kontekstowy.
+1. **Scraper (external):** `gosom/google-maps-scraper` runs in its own Docker container for a given query/region. It writes newline-delimited JSON (JSONL) to a shared volume.
+2. **Ingest:** n8n's `Read/Write Files from Disk` node picks up the JSONL file; `Extract from File` parses it line by line.
+3. **Hard filter:** a `Filter` node drops any row where:
+   - `website` is empty (nothing to qualify without one)
+   - `rating` is below 4.0 (too little signal to justify the later LLM spend)
+   - `status` is `Closed` (obvious)
+4. **Review trim:** the scraper returns full review objects (author name, text, photos, language, translation flags, avatar URLs, etc.). A `Code` node strips each review down to name + text only. That's all the qualifier and email generator ever look at, and keeping the rest would balloon token usage two stages later.
+5. **Append:** surviving rows are written to the `CRM` tab in Google Sheets. This sheet is the shared state for the whole pipeline.
+6. **Handoff:** an `Execute Workflow` node triggers the qualifier as a sub-workflow on the fresh rows.
 
 ---
 
-## Faza 4: "Sędzia" (Analiza AI)
+## Why Google Sheets and not a real database
 
-**Node:** `QUALIFIER`
-**Model:** Google Gemini (`gemini-2.0-flash`)
-**Temperatura:** `0.2` (Ścisła)
+Three workflows need to read and write the same rows, and the non-technical side of this project (me eyeballing pipeline state, spot-checking rejected leads, exporting to the mailing tool) benefits from having the data in a spreadsheet. Sheets gives me shared state with zero infra to maintain.
 
-AI analizuje zagregowany tekst strony + opinie z Google Maps używając ścisłego skryptu walidacyjnego.
-
-### Logika Walidacji
-1.  **Twarde Dyskwalifikatory:**
-    * Odrzuca: Vendorów, firmy konsultingowe, franczyzy i sieciówki (>15 lokalizacji).
-2.  **Dominacja Sygnału:**
-    * Upewnia się, że słowa kluczowe "Fizjoterapia" przeważają nad ogólnymi "Terapia" (np. logopedia, terapia zajęciowa).
-3.  **Identyfikacja Właściciela:**
-    * Skanuje w poszukiwaniu "Owner", "Founder", "CEO".
-    * **Cross-Reference:** Sprawdza, czy nazwiska wspomniane w opiniach (np. "Dr Smith jest super") pasują do nazwisk znalezionych na stronie.
-
-### Wyjścia (Outputs)
-* **Sukces:** Zwraca **Imię i Nazwisko Właściciela** (np. "Sarah Johnson").
-* **Porażka (SKIP):** Zwraca ustandaryzowany powód odrzucenia:
-    * `SKIP: Chain clinic`
-    * `SKIP: Insufficient depth in physical therapy services`
-    * `SKIP: Cannot verify owner from website data`
+Tradeoffs accepted: no transactions, no indexes, fragile schema, Sheets API rate limits. It works because volume is in the hundreds-of-leads-per-batch range, not millions. If that changed I'd move to Postgres.
 
 ---
 
-## Faza 5: Routing i Storage
+## Why the Google Maps scraper runs outside n8n
 
-Workflow kieruje wynik do różnych arkuszy w oparciu o decyzję AI.
+`gosom/google-maps-scraper` is a standalone Go binary. Wrapping it as a custom n8n node would mean writing and maintaining that node. Running it as its own container and exchanging data via a shared file is boring, works, and keeps the n8n export portable between machines.
 
-**Node Decyzyjny:** `If1` (Sprawdza, czy wynik zaczyna się od "SKIP")
-
-| Wynik | Arkusz Docelowy | Zapisane Dane |
-| :--- | :--- | :--- |
-| **Zakwalifikowany** | `THE QUALIFIER` | Imię Właściciela, Strona, Opinie, Miasto, Kraj |
-| **Zdyskwalifikowany** | `VERIF_NEEDED` | Powód SKIP, Strona, Opinie |
-| **Aktualizacja Statusu** | `CRM` (Arkusz Główny) | Aktualizuje główną listę wynikiem, aby zapobiec ponownemu przetwarzaniu. |
-
-
-
-
-
-# Lead Qualification & Enrichment Workflow
-
-**Workflow Name:** `New_Qualifier`
-**Trigger:** Executed by the `Scraper-Sheets` workflow (Sub-workflow).
-
-This workflow acts as the "brain" of the operation. It takes raw business leads, intelligently maps their websites to find staff/about pages, scrapes those specific pages, and uses AI to strictly qualify the business and identify the owner.
+Slightly awkward file-based handoff, much simpler failure modes.
 
 ---
 
-## Phase 1: Preparation & Routing
+## What's deliberately not here
 
-**1. Input Source**
-* **Node:** `Get row(s) in sheet`
-* **Source:** Google Sheet `CRM`.
-* **Logic:** Fetches existing rows to process.
-
-**2. Filtering**
-* **Node:** `Filter`
-* **Condition:** Checks if the column **"Clean Name"** is `Empty`.
-* **Purpose:** Ensures the workflow only processes new, unverified leads, skipping those already analyzed.
-
-**3. Website Validation**
-* **Node:** `If2`
-* **Logic:** Checks if the `Company Website` field exists.
-    * **No Website:** Updates the row with "NO_WEBSITE" and stops.
-    * **Has Website:** Proceeds to Phase 2.
+- No retry logic on the scraper — if it fails I re-run it by hand
+- No deduplication at this stage (the qualifier's `Clean Name is empty` filter handles this implicitly)
+- No rate limiting on the Sheets write — batch sizes are small enough that it hasn't been an issue
+- No automated tests — verified by running against real and synthetic input and reading the output
 
 ---
 
-## Phase 2: Intelligence Gathering (Navigation)
-
-Instead of scraping just the homepage, this workflow uses a two-step AI process to find the *right* pages (e.g., "Meet the Team" or "About Us").
-
-### 1. Site Mapping
-* **Tool:** `Firecrawl` (Self-hosted or Cloud)
-* **Endpoint:** `POST /v1/map`
-* **Action:** Crawls the target domain and returns a list of ALL accessible URLs on the site.
-
-### 2. Intelligent Page Selection
-* **Node:** `PAGE_SELECTOR`
-* **Model:** OpenAI (`gpt-5-nano` alias in n8n)
-* **Prompt Logic:**
-    * Input: List of all URLs from Firecrawl.
-    * Task: Select **Top 5** URLs most likely to contain owner/staff info.
-    * Rules: Prioritize "About", "Team", "Staff", "Leadership". Ignore "Login", "Blog", "Contact".
-
 ---
 
-## Phase 3: Deep Scraping & Cleaning
+# 🇵🇱 Wersja polska
 
-**1. Execution Loop**
-* **Node:** `Page By Page`
-* **Action:** Iterates through the 5 selected URLs.
+Pierwszy etap pipeline'u n8n. Pobiera surowy output z Dockerowego scrapera Google Maps, wyrzuca oczywiste nie-leady, przycina payloady recenzji do tego, co faktycznie zostanie wykorzystane, zapisuje pozostałe do arkusza CRM i przekazuje sterowanie do workflow kwalifikującego.
 
-**2. Extraction**
-* **Node:** `SCRAPE PAGES`
-* **Method:** HTTP GET with browser headers (User-Agent spoofing).
-* **Conversion:** `Markdown` node converts HTML to text.
+## Po co to pierwsze
 
-**3. Cleaning**
-* **Node:** `CleanPage` (Javascript)
-* **Logic:** Uses Regex to strip navigation menus, footers, copyright text, and social media links to reduce token usage and noise.
+Kolejne dwa workflow kosztują — Firecrawl, OpenAI, Gemini, Apify. Gdyby trafiał tam każdy rekord z Google Maps, większość tego budżetu szłaby na leady, które i tak odpadną przy oczywistych filtrach. Stąd zasada: najpierw tania logika, a koszty tylko na tym, co przeszło.
 
-**4. Aggregation**
-* **Node:** `WEBSITE_AGGREGATE`
-* **Action:** Combines the cleaned text from all 5 pages into a single context block.
+## Jak to działa
 
----
+`gosom/google-maps-scraper` w osobnym kontenerze zapisuje JSONL na wspólny wolumen → n8n parsuje plik linia po linii → filtr odrzuca rekordy bez strony, z oceną poniżej 4.0 albo ze statusem "Closed" → `Code` node przycina recenzje do pól `name + text` (żeby ograniczyć koszt tokenów dwa etapy później) → ocalałe leady trafiają do arkusza `CRM` → `Execute Workflow` uruchamia qualifier.
 
-## Phase 4: The "Judge" (AI Analysis)
+## Stack
 
-**Node:** `QUALIFIER`
-**Model:** Google Gemini (`gemini-2.0-flash`)
-**Temperature:** `0.2` (Strict)
+n8n (self-hosted, Docker) · `gosom/google-maps-scraper` (Docker) · Google Sheets
 
-The AI analyzes the aggregated website text + Google Maps reviews using a strict validation script.
+## License
 
-### Validation Logic
-1.  **Hard Disqualifiers:**
-    * Rejects: Vendors, consulting firms, franchises, and chains (>15 locations).
-2.  **Signal Dominance:**
-    * Ensures "Physical Therapy" keywords outnumber generic "Therapy" keywords (e.g., Speech, Occupational).
-3.  **Owner Identification:**
-    * Scans for "Owner", "Founder", "CEO".
-    * **Cross-Reference:** Checks if names mentioned in reviews (e.g., "Dr. Smith is great") match names found on the website.
-
-### Outputs
-* **Success:** Returns the **Owner's Name** (e.g., "Sarah Johnson").
-* **Failure (SKIP):** Returns a standardized rejection reason:
-    * `SKIP: Chain clinic`
-    * `SKIP: Insufficient depth in physical therapy services`
-    * `SKIP: Cannot verify owner from website data`
-
----
-
-## Phase 5: Routing & Storage
-
-The workflow routes the result to different sheets based on the AI's decision.
-
-**Decision Node:** `If1` (Checks if result starts with "SKIP")
-
-| Outcome | Destination Sheet | Data Recorded |
-| :--- | :--- | :--- |
-| **Qualified** | `THE QUALIFIER` | Owner Name, Website, Reviews, City, Country |
-| **Disqualified** | `VERIF_NEEDED` | The SKIP reason, Website, Reviews |
-| **Status Update** | `CRM` (Main Sheet) | Updates the main list with the finding to prevent re-processing. |
+Source-available for reference. Not licensed for redistribution or commercial use.
