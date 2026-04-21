@@ -1,134 +1,122 @@
-# Autonomiczny Pipeline Kwalifikacji i Outreachu Leadów ----(Scroll for English)----
+# Lead Qualification & Outreach Pipeline (n8n)
 
-To repo zawiera kompletny zestaw automatyzacji end-to-end, zaprojektowany, aby przekształcić surowe dane z Google Maps w hiper-spersonalizowany, cold outreach "ludzkiej jakości" oferując chatboty dla klinik fizjoterapii.
+Solo project. End-to-end n8n pipeline that takes raw Google Maps data, filters it down to independent physiotherapy clinic owners, and generates cold outreach emails grounded in a recent business signal.
 
-W przeciwieństwie do tradycyjnych scraperów, które zalewają CRM-y kontaktami z zupełnie innej bajki, ten system działa z precyzją człowieka – od scrapowania po pisanie maili. Priorytetem jest tu **sygnał nad szumem** i **trafność nad ilością**, co gwarantuje, że każdy wygenerowany email opiera się na zweryfikowanej, operacyjnej rzeczywistości.
+Sanitized public extract of a private project — credentials, live prompts, and target domains removed. Commit history lives in the private source repo.
 
-## Główna Filozofia
+---
 
-Cel tej automatyzacji najlepiej podsumowuje hasło: **kosztowo efektywna inteligencja**.
+## Scope & status
 
-Odrzuciliśmy standardowe podejście polegające na rzucaniu drogich LLM-ów na surowe dane. Zamiast tego zbudowaliśmy system typu waterfall (kaskadowy), gdzie dane muszą "zasłużyć" na przetworzenie przez kolejną, droższą warstwę. Lead jest wzbogacany tylko wtedy, gdy przejdzie przez ścisłe bramki kwalifikacyjne, a email jest pisany tylko wtedy, gdy wykryty zostanie legitny sygnał biznesowy (jak nowe zatrudnienie czy niedawna recenzja).
+- Self-hosted n8n via Docker. Ran in production long enough to validate the pipeline end-to-end on real leads.
+- Three separate workflows, coupled by Google Sheets as the shared store.
+- AI-assisted during development (Claude Code for iteration, n8n's own AI nodes for orchestration). The architecture, gating logic, and prompt constraints are my design.
 
-Wynikiem jest pipeline, który działa za grosze na leada, ale wypluwa copy, które unosi brwi, bo wygląda na rzetelnie zresearchowane.
+---
 
-## Architektura
+## Why this exists
 
-System składa się z trzech odrębnych, powiązanych ze sobą workflow-ów.
+Standard lead-gen tools scrape everything, pay for expensive LLM calls on every row, and still produce generic "loved your website!" cold emails. I wanted the opposite: cheap filtering upfront, LLM spend only on leads that pass hard gates, and emails that reference something concrete and recent.
 
-### 1. Sieć: Wprowadzenie i Wstępne Czyszczenie (The Dragnet)
-**Workflow:** `Scraper-Sheets`
+The pipeline is structured as a waterfall — each stage has the right to drop a lead. By the time a lead reaches the email generator, it's been through two filtering layers and a dedicated signal-detection step.
 
-Proces zaczyna się od scrapera Google Maps uruchamianego w Dockerze (`gosom/google-maps-scraper`). To narzędzie zarzuca szeroką sieć, wyciągając surowe dane biznesowe i – co kluczowe – szczegółowe recenzje użytkowników z docelowych obszarów.
+---
 
-Gdy surowy JSON zostanie wygenerowany, ten workflow działa jak bramkarz:
-* **Wprowadzenie:** Parsuje masywne pliki JSON (newline-delimited).
-* **Sanityzacja:** Natychmiast odrzuca firmy "duchy" – te bez strony www, ze słabymi ocenami (<4.0) lub statusem "Zamknięte".
-* **Kompresja:** Obcina dane recenzji do absolutnego minimum (Imię + Treść), wyrzucając zbędne metadane, aby oszczędzać tokeny na dalszych etapach.
-* **Storage:** Zakwalifikowane, surowe leady są doklejane do CRM-a (Google Sheets) na potrzeby kolejnej fazy.
+## Architecture
 
-### 2. Sędzia: Głęboka Kwalifikacja i Mapowanie Strony (The Judge)
-**Workflow:** `New_Qualifier`
+Three workflows, each a separate n8n export:
 
-To "mózg" operacji. Zakłada, że surowe dane mogą być mylące i dąży do ich weryfikacji. Zamiast scrapować tylko stronę główną, system zachowuje się jak człowiek nawigujący po witrynie.
+### 1. Scraper-Sheets — ingest & filter
 
-* **Inteligentna Nawigacja:** Używa **Firecrawl** do zmapowania całej struktury strony, a następnie lekkiego LLM-a (OpenAI `gpt-5-nano`), aby zidentyfikować konkretne podstrony, które najprawdopodobniej zawierają informacje o właścicielu (np. `/meet-the-team`, `/our-story`, `/leadership`).
-* **Celowana Ekstrakcja:** Scrapuje tylko te wysokowartościowe podstrony, czyszcząc HTML do gęstego Markdowna, aby usunąć szum nawigacyjny.
-* **Trybunał:** Zagregowany kontekst trafia do **Google Gemini** ze ścisłym "Promptem Konstytucyjnym". Ten prompt wymusza twarde reguły dyskwalifikacji:
-    * Odrzuca ogólnokrajowe sieciówki, franczyzy i usługi vendorów.
-    * Weryfikuje tytuł "Właściciela" w tekście strony (zapobiegając halucynacjom opartym wyłącznie na recenzjach).
-    * Upewnia się, że klinika skupia się głównie na docelowej niszy (Fizjoterapia), a nie na ogólnym wellness.
+- `gosom/google-maps-scraper` in Docker pulls business data + reviews from Google Maps for a target query/region
+- n8n parses the newline-delimited JSON output
+- Drops anything with no website, rating under 4.0, or "Closed" status
+- Strips review payloads down to name + text only (token cost control for later stages)
+- Appends survivors to Google Sheets
 
-Tylko zweryfikowani, niezależni właściciele przechodzą do finałowego etapu.
+### 2. New_Qualifier — verify it's a real independent owner
 
-### 3. Domykacz: Copywriting Oparty na Sygnałach (The Closer)
-**Workflow:** `email_gen`
+This is the expensive stage, so it runs only on pre-filtered rows.
 
-Ostatni workflow to copywriter. Nie używa szablonów. Wykorzystuje **Hierarchię Sygnałów**, aby zbudować "Most" między rzeczywistością prospekta a rozwiązaniem (Automatyzacja Administracji).
+- Firecrawl maps the full site structure for each lead
+- A cheap LLM (OpenAI, small model) picks which subpages are most likely to contain owner/team info (`/about`, `/team`, `/meet-the-team`, etc.)
+- Only those pages get scraped, converted to Markdown to strip nav/footer noise
+- The aggregated Markdown goes to Gemini with a hard-constrained prompt that must:
+  - Reject national chains, franchises, and vendor platforms
+  - Confirm the "owner" title appears in the site text, not just inferred from reviews
+  - Confirm the clinic's primary focus is physiotherapy, not general wellness
 
-* **Wykrywanie Sygnału:**
-    * **Priorytet A (Operacje):** Scrapuje posty z ostatnich 4 miesięcy z **Facebooka** używając **Apify**. Szuka *ostrych* wyzwalaczy administracyjnych: nowi pracownicy, warsztaty dla społeczności lub przerwy świąteczne.
-    * **Priorytet B (Reputacja):** Jeśli aktywność w socialach jest martwa, spada do **Recenzji Google**. Analizuje 5-gwiazdkowe opinie, aby znaleźć *przewlekłe* wyzwalacze: duża popularność, konkretne pochwały dla personelu lub wzmianki o "zajętej recepcji".
-* **Logika "Mostu":**
-    * AI ma wyraźny zakaz pisania generycznych komplementów.
-    * Musi skonstruować logiczny argument: *"Widziałem [Sygnał X], co zazwyczaj powoduje [Ból Administracyjny Y]."*
-    * *Przykład:* "Widziałem, że niedawno dołączył do zespołu dr Smith. Większość właścicieli mówi mi, że taka faza wzrostu zazwyczaj podbija liczbę telefonów do recepcji z pytaniami o grafik."
-* **Anty-Halucynacja:** Ostatnia warstwa logiczna waliduje emaila. Jeśli AI nie może znaleźć wystarczająco silnego sygnału, by zbudować sensowny most, zwraca kod `ERROR` zamiast wysyłać słabego, generycznego maila.
+If any rule fails, the lead is dropped before it ever hits the email stage.
 
-## Techstack
+### 3. email_gen — write the outreach
 
-* **Orkiestracja:** n8n (Self-hosted)
-* **Baza danych:** Google Sheets
-* **Scraping:** Docker (`gosom/google-maps-scraper`), Firecrawl (Mapowanie Strony), Apify (Facebook)
-* **Inteligencja:**
-    * **Google Gemini (Flash/Pro):** Używany do złożonego wnioskowania i kreatywnego copywritingu ze względu na lepsze okno kontekstowe i stosunek jakości do ceny.
-    * **OpenAI (GPT-4o-mini):** Używany do szybkich, tanich decyzji routingowych i selekcji linków.
+Signal-first, template-free. The LLM is explicitly told it cannot send an email without a concrete recent signal to reference.
 
+Signal hierarchy:
 
+1. **Operational (priority):** Apify scrapes the last ~4 months of Facebook posts. Looks for new hires, workshops, extended hours, holiday closures.
+2. **Reputation (fallback):** If socials are dead, analyze 5-star Google reviews for chronic signals — staff praise, front-desk bottleneck mentions, high traffic.
 
+The generator's job is to build a single-sentence bridge: "I saw X, which usually causes Y" — where Y is a specific admin pain the offered chatbot solves. No generic compliments allowed by the prompt.
 
-# Autonomous Lead Qualification & Outreach Pipeline
+If no signal is strong enough, the node returns `ERROR` and the lead is skipped instead of sending a weak email. This was added after seeing the first batch of emails drift toward "love what you're doing!" filler when no real hook existed.
 
-This repository houses a complete, end-to-end automation suite designed to transform raw Google Maps data into hyper-personalized, "human-grade" cold outreach offering AI chatbots for physiotherapy clinics.
+---
 
-Unlike traditional "spray and pray" scrapers that flood CRMs with contacts from a completely different industry, this system operates with the precision of a human, from scraping to writing emails. It prioritizes **signal over noise** and **relevance over volume**, ensuring that every email generated is based on verified, operational reality.
+## Tech stack
 
-## Core Philosophy
+- **Orchestration:** n8n, self-hosted via Docker
+- **Store:** Google Sheets (simple, shared across workflows, good enough at this scale)
+- **Scraping:** `gosom/google-maps-scraper` (Docker), Firecrawl (site mapping), Apify (Facebook posts)
+- **LLMs:**
+  - Google Gemini for the qualification reasoning and email generation (better long-context behavior for multi-page Markdown input)
+  - OpenAI small model for cheap routing decisions (subpage selection)
 
-The focus of this automation is best summed up as **cost-efficient intelligence**.
+---
 
-We rejected the standard approach of throwing expensive LLMs at raw data. Instead, we built a waterfall system where data must "earn" the right to be processed by the next, more expensive tier. A lead is only enriched if it passes strict qualification gates, and an email is only written if a legitimate business signal (like a new hire or a recent review) is detected.
+## What's not in the public version
 
-The result is a pipeline that runs for pennies per lead but outputs copy that raises eyebrows because it feels genuinely researched.
+- Actual prompts (the constraint rules are the IP here)
+- Client list / target regions
+- API keys and n8n credentials
+- The Sheets schema
 
-## The Architecture
+The workflow JSON files show node structure and wiring but are sanitized.
 
-The system is composed of three distinct, coupled workflows.
+---
 
-### 1. The Dragnet: Ingestion & Initial Cleaning
-**Workflow:** `Scraper-Sheets`
+## What's deliberately not here
 
-The process begins with a self-hosted, Dockerized Google Maps scraper (`gosom/google-maps-scraper`). This tool casts a wide net, pulling raw business data and—crucially—detailed user reviews from target search areas.
+- No automated tests — n8n workflow logic is tested by running it on known good/bad leads
+- No CI/CD — this is a single-host Docker setup, deployed by restart
+- No queueing infra — n8n's own execution queue is sufficient for the volume
 
-Once the raw JSON is generated, this workflow acts as the gatekeeper:
-* **Ingestion:** It parses massive newline-delimited JSON files.
-* **Sanitization:** It immediately discards "ghost" businesses—those with no website, poor ratings (<4.0), or "Closed" status.
-* **Compression:** It strips review data down to the bare essentials (Name + Text), discarding metadata to save token costs downstream.
-* **Storage:** Qualified raw leads are appended to the CRM (Google Sheets) for the next phase.
+---
 
-### 2. The Judge: Deep Qualification & Site Mapping
-**Workflow:** `New_Qualifier`
+---
 
-This is the "brain" of the operation. It assumes the raw data is misleading and seeks to verify it. Instead of scraping just the homepage, it behaves like a human user navigating a website.
+# 🇵🇱 Wersja polska
 
-* **Intelligent Navigation:** It uses **Firecrawl** to map the entire site structure, then uses a lightweight LLM (OpenAI `gpt-5-nano`) to identify the specific pages most likely to contain owner information (e.g., `/meet-the-team`, `/our-story`, `/leadership`).
-* **Targeted Extraction:** It scrapes only those high-value pages, cleaning the HTML into dense Markdown to remove navigation noise.
-* **The Tribunal:** The aggregated context is fed to **Google Gemini** with a strict "Constitutional Prompt." This prompt enforces hard disqualification rules:
-    * It rejects nationwide chains, franchises, and vendor services.
-    * It verifies the "Owner" title against the website text (preventing hallucinations based solely on reviews).
-    * It ensures the clinic is predominantly focused on the target niche (Physical Therapy), not general wellness.
+**Solo project.** Pipeline n8n który bierze surowe dane z Google Maps, filtruje je do niezależnych właścicieli klinik fizjoterapii i generuje cold maile oparte na konkretnym, świeżym sygnale biznesowym.
 
-Only verified, independent owners are passed to the final stage.
+Publiczny, oczyszczony wyciąg z prywatnego projektu — credentiale, prawdziwe prompty i domeny usunięte.
 
-### 3. The Closer: Signal-Based Copywriting
-**Workflow:** ` email_gen`
+## Po co to istnieje
 
-The final workflow is the copywriter. It does not use templates. It uses a **Signal Hierarchy** to construct a "Bridge" between the prospect's reality and the solution (Admin Automation).
+Standardowe narzędzia do lead-genu scrapują wszystko, płacą za drogie wywołania LLM na każdym rekordzie i i tak wypluwają generyczne "podoba mi się twoja strona!". Chciałem odwrotnie: tanie filtrowanie z góry, wydatek na LLM tylko na leadach które przeszły twarde bramki, i maile referujące coś konkretnego i świeżego.
 
-* **Signal Detection:**
-    * **Priority A (Operations):** It scrapes the last 4 months of **Facebook** posts using **Apify**. It looks for *acute* admin triggers: new staff hires, community workshops, or holiday closures.
-    * **Priority B (Reputation):** If social activity is dead, it falls back to **Google Reviews**. It analyzes 5-star reviews to find *chronic* admin triggers: high popularity, specific praise for staff, or "busy front desk" mentions.
-* **The "Bridge" Logic:**
-    * The AI is explicitly forbidden from writing generic compliments.
-    * It must construct a logical argument: *"I saw [Signal X], which usually causes [Admin Pain Y]."*
-    * *Example:* "I saw you recently added Dr. Smith to the team. Most owners tell me that growth phase usually spikes the front-desk call volume with scheduling questions."
-* **Anti-Hallucination:** A final logic layer validates the email. If the AI cannot find a strong enough signal to build a valid bridge, it outputs an `ERROR` code rather than sending a weak, generic email.
+Struktura to kaskada — każdy etap ma prawo odrzucić leada. Zanim lead dociera do generatora maili, przeszedł przez dwie warstwy filtrowania i osobny etap detekcji sygnału.
 
-## The Tech Stack
+## Architektura (skrót)
 
-* **Orchestration:** n8n (Self-hosted)
-* **Database:** Google Sheets
-* **Scraping:** Docker (`gosom/google-maps-scraper`), Firecrawl (Site Mapping), Apify (Facebook)
-* **Intelligence:**
-    * **Google Gemini (Flash/Pro):** Used for complex reasoning and creative copywriting due to its superior context window and reasoning-to-cost ratio.
-    * **OpenAI (GPT-4o-mini):** Used for fast, low-cost routing decisions and link selection.
+1. **Scraper-Sheets** — scraper Google Maps w Dockerze, odrzuca firmy bez strony / z oceną <4.0 / zamknięte, zapisuje do Sheets
+2. **New_Qualifier** — Firecrawl mapuje stronę, tani LLM wybiera podstrony o właścicielu, Gemini weryfikuje że to niezależna klinika fizjoterapii (nie sieciówka, nie wellness, tytuł właściciela musi być w tekście strony)
+3. **email_gen** — detektor sygnału (Facebook przez Apify, fallback do recenzji Google), generator musi zbudować zdanie "widziałem X, co zwykle powoduje Y". Bez sygnału zwraca ERROR zamiast wysyłać generyka.
+
+## Stack
+
+n8n (self-hosted, Docker) · Google Sheets · `gosom/google-maps-scraper` · Firecrawl · Apify · Google Gemini · OpenAI (small model do routingu)
+
+## License
+
+Source-available for reference. Not licensed for redistribution or commercial use.
