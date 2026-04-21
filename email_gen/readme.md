@@ -1,217 +1,119 @@
-# Pipeline Generowania Cold Openerów ----(Scroll for English)----
+# Email Generation Workflow (email_gen)
 
-![Scraper Screenshot](./email_gen.png)
+Third and final stage of the n8n pipeline. Takes the few leads that have survived the scraper and qualifier, finds a recent operational signal from the clinic's Facebook page, falls back to Google review patterns if Facebook is dead, and generates a short cold-email opener that references that signal. If no signal is strong enough, the workflow writes an error code instead of sending a weak email.
 
-**Trigger:** Ręczny (Batch run)
-
-Ten workflow to "domykacz" (closer). Pobiera zakwalifikowane leady z poprzednich kroków i generuje hiper-spersonalizowane openery, oparte na "admin-empathy" (zrozumieniu bólu administracyjnego).
-
-## Główna Logika: "Hierarchia Sygnałów"
-
-Workflow opiera się na konkretnej filozofii: **Trafność > Reputacja**.
-Nie traktuje wszystkich danych jednakowo. Używa logiki rozgałęziającej, aby znaleźć "najgłośniejszy" sygnał aktywności biznesowej.
-
-1.  **Sygnał Podstawowy (Facebook):** Szuka *niedawnych* zmian operacyjnych (zatrudnienie, wydarzenia, zamknięcia, nowe technologie). Tworzą one natychmiastowy, ostry ból administracyjny.
-2.  **Sygnał Wtórny (Opinie Google):** Jeśli brak niedawnej aktywności w socialach, system spada (fallback) do sygnałów *reputacji* (duża liczba opinii, konkretne pochwały). Sugerują one przewlekły ból administracyjny (popularność = duży ruch).
+Sanitized public extract of a private project. Commit history lives in the private source repo.
 
 ---
 
-## Faza 1: Ponowna Weryfikacja i Link Intelligence
+## Scope & status
 
-Przed wygenerowaniem tekstu, workflow upewnia się, że patrzy na właściwy ślad cyfrowy.
+Manual batch trigger. Runs on rows in the CRM sheet where the `Opener` column is empty. The prompt constraints, the signal hierarchy, and the pass/error validation gate are my design; Apify and the LLM nodes do the heavy lifting.
 
-* **Wejście:** Czyta leady z CRM (Google Sheet), gdzie kolumna `Opener` jest pusta.
-* **Ekstrakcja Linków:**
-    * **Node:** `FB _LINK_EXTRACT`
-    * **Logika:** Używa Regexa do wyciągnięcia potencjalnych linków do Facebooka z treści strony.
-* **Inteligentne Rozróżnianie:**
-    * **Node:** `FB_ANALYZER` (GPT-4-Nano)
-    * **Zadanie:** Jeśli znaleziono wiele linków do FB (np. strona korporacyjna vs lokalna klinika), AI analizuje strukturę URL i nazwę kliniki, aby wybrać właściwą stronę *lokalną*.
-* **Sprawdzenie Konkurencji:**
-    * **Node:** `If5`
-    * **Logika:** Skanuje URL lub dane strony pod kątem frazy "deardoc". Jeśli ją znajdzie, lead jest oflagowany/pominięty (prawdopodobnie korzystają już z konkurencji lub konkretnego vendora).
+AI-assisted during development (Claude Code for iteration). The bridge logic — the specific "if X signal, then Y admin pain, then Z opener" mappings — is the IP I'm keeping out of the public version.
 
 ---
 
-## Faza 2: "Inteligentne" Rozgałęzienie (The Fork)
+## Why this stage exists
 
-Workflow dzieli się na dwie odrębne ścieżki w zależności od dostępności danych.
+A cold email that opens with "Great website!" has zero credibility. The generator's job is to write one concrete sentence that proves the sender actually looked at the lead before writing. That means finding a real, recent, specific signal — not just the site content the qualifier already chewed through.
 
-### Ścieżka A: "Aktywny Chaos" (Facebook)
-**Trigger:** Znaleziono prawidłowy, unikalny link do Facebooka.
-
-1.  **Głęboka Ekstrakcja:**
-    * **Node:** `FB_POSTS` (Apify)
-    * **Akcja:** Scrapuje posty z ostatnich ~4 miesięcy, w tym treść, daty i liczbę lajków.
-2.  **Podsumowanie:**
-    * **Node:** `Summarize2`
-    * **Logika:** Łączy ostatnie posty w jeden blok tekstu, aby zmieścić się w oknie kontekstowym AI.
-3.  **Generowanie:**
-    * **Node:** `FACEBOOK_OPENER` (Gemini)
-    * **Strategia:** "Znaczenie Operacyjne".
-
-### Ścieżka B: "Dowód Społeczny" (Google)
-**Trigger:** Brak linku do FB lub scrapowanie FB nie powiodło się/nie zwróciło nowych danych.
-
-1.  **Źródło Danych:**
-    * Wykorzystuje dane `Reviews` i `CleanedPage` zebrane w poprzednich workflow-ach.
-2.  **Generowanie:**
-    * **Node:** `GOOGLE_OPENER` (Gemini)
-    * **Strategia:** "Wolumen i Motywy".
+Two things follow from that: find the freshest signal available, and refuse to write an email when no signal is strong enough.
 
 ---
 
-## Faza 3: Logika "Mostu" (Prompt Engineering)
+## Architecture
 
-To najbardziej krytyczna część workflow-u. Prompty są zaprojektowane tak, aby unikać generycznych komplementów ("Fajna strona!") i zamiast tego budować **Logiczny Most** do problemu, który rozwiązujesz (Przeciążenie Administracyjne).
+![email_gen workflow](./email_gen.png)
 
-### Strategia Promptowania Facebooka
-* **Wejście:** Ostatnie posty o warsztatach, nowych pracownikach, przerwach świątecznych lub nowych technologiach.
-* **Most:** AI otrzymuje instrukcję, że **Aktywność = Zapytania**.
-    * *Jeśli zatrudnienie:* "Nowy personel oznacza więcej pytań o grafik od nowych pacjentów."
-    * *Jeśli wydarzenia:* "Wydarzenia lokalne oznaczają więcej zapytań od osób niebędących pacjentami."
-    * *Jeśli nowa technologia:* "Nowe usługi oznaczają więcej pytań o pokrycie ubezpieczeniowe."
-* **Cel Wyjściowy:** "Widziałem, że niedawno dołączył do zespołu [Imię]. Większość właścicieli mówi mi, że taka faza wzrostu zazwyczaj podbija liczbę telefonów do recepcji z pytaniami o grafik."
+### Input and link resolution
 
-### Strategia Promptowania Opinii Google
-* **Wejście:** Duży wolumen 5-gwiazdkowych opinii wspominających o konkretnych rzeczach (np. "przyjazny personel", "terapia manualna").
-* **Most:** AI otrzymuje instrukcję, że **Popularność = Hałas**.
-    * *Duży wolumen:* "Świetna reputacja oznacza, że telefony się urywają."
-    * *Pochwały personelu:* "Gdy pacjenci tak bardzo uwielbiają personel, dzwonią, by umówić się konkretnie do nich, tworząc Tetris w grafiku."
-* **Cel Wyjściowy:** "Widziałem ogromną falę 5-gwiazdkowych opinii o waszej terapii manualnej. Zazwyczaj taki poziom popularności tworzy zator zapytań do obsłużenia przez recepcję."
+- Reads CRM rows where `Opener` is empty
+- A regex step (`FB _LINK_EXTRACT`) pulls any Facebook URLs out of the lead's site HTML
+- If multiple Facebook links are found (corporate HQ page vs. local clinic page, etc.), `gpt-4.1-nano` picks the right one by comparing URL structure to the clinic's name
+- A competitor check scans URLs and page data for a known competitor's vendor string. If matched, the lead is flagged and skipped — they're probably already using that vendor
 
----
+### Signal hierarchy
 
-## Faza 4: Kontrola Jakości i Routing
+The workflow branches on data availability:
 
-Workflow nie zapisuje ślepo każdego wyniku. Stosuje rygorystyczny filtr walidacyjny.
+- **Path A — Facebook signal (priority):** if a valid local page exists, Apify scrapes the last ~4 months of posts (text, dates, like counts). Recent operational changes — new hires, workshops, extended hours, holiday closures, new services — create acute admin pain, which is exactly what the offered product addresses.
+- **Path B — Review signal (fallback):** if there's no usable Facebook data, fall back to the Google reviews and cleaned site text the qualifier already gathered. This path relies on chronic signals: high review volume implies front-desk load; concentrated staff praise implies scheduling bottlenecks around specific practitioners.
 
-**Node Walidacyjny:** `FB IF OPENER BAD` / `IF ERROR/PASS`
-Prompty AI mają instrukcję, by zwracać `PASS` lub `ERROR`, jeśli nie mogą znaleźć wystarczająco silnego sygnału.
+Facebook wins priority because a recent concrete event beats a structural inference every time. But a lot of clinics have dead socials, so the fallback has to exist or the pipeline drops half its leads.
 
-* **Sukces:**
-    * Wygenerowany opener jest czysty, ma poniżej 35 słów i ściśle trzyma się formatu.
-    * **Akcja:** Aktualizuje arkusz `CRM` i kopiuje leada do arkusza `EXPORT_READY` dla narzędzia mailingowego.
-* **Porażka (PASS/ERROR):**
-    * AI nie mogło znaleźć mostu (np. nieaktywny Facebook, generyczne opinie).
-    * **Akcja:** Aktualizuje `CRM` kodem błędu i przenosi leada do `VERIF_NEEDED` do ręcznego sprawdzenia.
+### Generation
 
----
+- Google Gemini generates either a Facebook-signal opener or a review-signal opener
+- Both prompts are constrained to a single template: `"I saw X, which usually causes Y"` where Y is a specific admin pain the offered product solves
+- Output is capped at 35 words, no greetings, no "great website" padding
 
-## Podsumowanie Użytych Narzędzi
+### Validation — pass / error gate
 
-* **Apify:** Ciężka praca przy scrapowaniu Facebooka (obejście ścisłych zabezpieczeń anty-botowych).
-* **GPT-4.1-Nano:** Tania logika do wybierania właściwego linku.
-* **Google Gemini:** Wysokiej jakości kreatywne pisanie finalnych maili.
-* **Regex:** Czyszczenie linków i markdowna.
-* **Google Sheets:** Zarządzanie bazą danych i śledzenie stanu.
+The critical part. Each Gemini prompt can return `ERROR` or `PASS` instead of an opener if it can't find a concrete enough hook.
 
+| Result | Action |
+| --- | --- |
+| Clean opener, under 35 words, correct format | Write to `CRM`, copy row to `EXPORT_READY` for the mailing tool |
+| `ERROR` / `PASS` | Write the error code to `CRM`, move the row to `VERIF_NEEDED` for manual review |
 
-
-
-
-# Cold Opener Generation Pipeline
-
-**Trigger:** Manual (Batch run)
-
-This workflow is the "closer." It takes the qualified leads from the previous steps and generates hyper-personalized, "admin-empathy" cold email openers.
-
-## The Core Logic: "Signal Hierarchy"
-
-The workflow is built on a specific philosophy: **Relevancy > Reputation**.
-It does not treat all data equally. It uses a branching logic to find the "loudest" signal of business activity.
-
-1.  **Primary Signal (Facebook):** Looks for *recent* operational changes (hiring, events, closures, new tech). These create immediate, acute admin pain.
-2.  **Secondary Signal (Google Reviews):** If no recent social activity exists, it falls back to *reputation* signals (high review volume, specific praise). These imply chronic admin pain (popularity = busyness).
+The error fallback was added after the first batch of openers drifted toward generic "love what you're doing!" filler when no real hook existed. Letting the LLM skip instead of improvise is worth the extra manual triage.
 
 ---
 
-## Phase 1: Re-Verification & Link Intelligence
+## Why Apify and not a direct Facebook scrape
 
-Before generating text, the workflow ensures it is looking at the correct digital footprint.
+Facebook's anti-bot defences shift constantly. Maintaining a scraper that survives contact with their rate-limiting and challenge pages is a full-time job on its own. Apify does that work as a managed service — I'm effectively buying "someone else keeps up with Facebook's changes" as a line item.
 
-* **Input:** Reads leads from the CRM (Google Sheet) where the `Opener` column is empty.
-* **Link Extraction:**
-    * **Node:** `FB _LINK_EXTRACT`
-    * **Logic:** Uses Regex to pull potential Facebook links from the website body.
-* **Intelligent Disambiguation:**
-    * **Node:** `FB_ANALYZER` (GPT-4-Nano)
-    * **Task:** If multiple Facebook links are found (e.g., a corporate page vs. a local clinic page), the AI analyzes the URL structure and clinic name to pick the correct *local* page.
-* **Competitor Check:**
-    * **Node:** `If5`
-    * **Logic:** Scans for "deardoc" in the URL or page data. If found, the lead is flagged/skipped (likely because they are already using a competitor or specific vendor).
+Higher per-lead cost than a raw scrape. Much lower maintenance burden. Worth it.
 
 ---
 
-## Phase 2: The "Smart" Branching (The Fork)
+## Why Gemini for generation, not OpenAI
 
-The workflow splits into two distinct paths based on data availability.
+Two reasons. Long-context behaviour on multi-post Facebook summaries plus review text plus site context was better in my testing — OpenAI models in the same price tier tended to latch onto the first signal they saw and ignore the rest. And I was already using OpenAI for the cheap routing step, so splitting models kept the spend on the expensive step isolated from the routing spend.
 
-### Path A: The "Active Chaos" Path (Facebook)
-**Trigger:** A valid, unique Facebook link is found.
-
-1.  **Deep Extraction:**
-    * **Node:** `FB_POSTS` (Apify)
-    * **Action:** Scrapes the last ~4 months of posts, including text, dates, and like counts.
-2.  **Summarization:**
-    * **Node:** `Summarize2`
-    * **Logic:** Concatenates recent posts into a single text block to fit within the AI's context window.
-3.  **Generation:**
-    * **Node:** `FACEBOOK_OPENER` (Gemini)
-    * **Strategy:** "Operational Significance."
-
-### Path B: The "Social Proof" Path (Google)
-**Trigger:** No Facebook link exists, or the Facebook scrape failed/returned no recent data.
-
-1.  **Data Source:**
-    * Uses the `Reviews` and `CleanedPage` data gathered in previous workflows.
-2.  **Generation:**
-    * **Node:** `GOOGLE_OPENER` (Gemini)
-    * **Strategy:** "Volume & Themes."
+Not a religious choice. If the qualitative gap closes I'd switch.
 
 ---
 
-## Phase 3: The "Bridge Logic" (Prompt Engineering)
+## Tools
 
-This is the most critical part of the workflow. The prompts are designed to avoid generic compliments ("Nice website!") and instead build a **Logical Bridge** to the problem you are solving (Admin Overwhelm).
-
-### The Facebook Prompt Strategy
-* **The Input:** Recent posts about workshops, new staff, holiday closures, or new technology.
-* **The Bridge:** The AI is instructed that **Activity = Inquiries**.
-    * *If hiring:* "New staff means more new patient scheduling questions."
-    * *If events:* "Community events mean more non-patient inquiries."
-    * *If new tech:* "New services mean more questions about insurance coverage."
-* **The Output Goal:** "Saw you recently added [Name] to the team. Most owners tell me that growth phase usually spikes the front-desk call volume with scheduling questions."
-
-### The Google Review Prompt Strategy
-* **The Input:** A high volume of 5-star reviews mentioning specific things (e.g., "friendly staff", "hands-on care").
-* **The Bridge:** The AI is instructed that **Popularity = Noise**.
-    * *High volume:* "Great reputation means the phone is ringing off the hook."
-    * *Staff praise:* "When patients love the staff this much, they call specifically to book them, creating scheduling Tetris."
-* **The Output Goal:** "Saw the massive wave of 5-star reviews about your hands-on care. Usually, that level of popularity creates a backlog of inquiries for the front desk to manage."
+- **Apify** — Facebook post extraction (last ~4 months)
+- **OpenAI `gpt-4.1-nano`** — cheap link disambiguation
+- **Google Gemini** — opener generation
+- **Regex / JS `Code` nodes** — link cleanup, Markdown stripping
+- **Google Sheets** — shared state across all three workflows
 
 ---
 
-## Phase 4: Quality Control & Routing
+## What's deliberately not here
 
-The workflow does not blindly save every output. It uses a strict strict validation filter.
-
-**Validation Node:** `FB IF OPENER BAD` / `IF ERROR/PASS`
-The AI prompts are instructed to output `PASS` or `ERROR` if they cannot find a strong enough signal.
-
-* **Success:**
-    * The generated opener is clean, under 35 words, and strictly follows the format.
-    * **Action:** Updates the `CRM` sheet and copies the lead to the `EXPORT_READY` sheet for the mailing tool.
-* **Failure (PASS/ERROR):**
-    * The AI couldn't find a bridge (e.g., inactive Facebook, generic reviews).
-    * **Action:** Updates the `CRM` with the error code and moves the lead to `VERIF_NEEDED` for manual review.
+- No A/B testing on opener variants — one generation per lead
+- No reply tracking — the mailing tool downstream handles that
+- No retry on Apify timeouts — the lead drops to `VERIF_NEEDED` and I deal with it manually
+- No deliverability tooling (warm-up, bounce handling, SPF/DKIM checks) — all of that sits in the mailing tool, not here
 
 ---
 
-## Summary of Tools Used
+---
 
-* **Apify:** Heavy lifting for Facebook scraping (bypassing strict anti-bot measures).
-* **GPT-4.1-Nano:** Low-cost logic for picking the right link.
-* **Google Gemini:** High-quality creative writing for the final emails.
-* **Regex:** Cleaning links and markdown.
-* **Google Sheets:** Database management and state tracking.
+# 🇵🇱 Wersja polska
+
+Trzeci i ostatni etap pipeline'u n8n. Bierze leady, które przeszły scraper i qualifier, szuka świeżego sygnału operacyjnego z Facebooka kliniki, a jeśli Facebook jest martwy, przechodzi na sygnał z recenzji Google. Generuje krótki opener cold-maila nawiązujący do tego sygnału. Jeśli żaden sygnał nie jest wystarczająco mocny, workflow zapisuje kod błędu zamiast wysyłać marnego maila.
+
+## Po co to istnieje
+
+Cold mail zaczynający się od "Super strona!" ma zerową wiarygodność. Generator ma napisać jedno konkretne zdanie, które udowadnia, że nadawca faktycznie spojrzał na leada przed pisaniem. To wymaga prawdziwego, świeżego, konkretnego sygnału — i odmowy wysyłki, jeśli takiego sygnału nie ma.
+
+## Jak to działa
+
+Regex wyciąga linki do Facebooka ze strony → `gpt-4.1-nano` wybiera właściwy lokalny profil, jeśli jest ich kilka → sprawdzenie pod kątem konkurencji i vendorów → rozgałęzienie: ścieżka FB (priorytet — Apify scrapuje ~4 miesiące postów) albo ścieżka recenzji Google (fallback) → Gemini generuje opener w formacie "widziałem X, co zwykle powoduje Y" z twardym limitem 35 słów → bramka walidacyjna: jeśli opener jest czysty, trafia do `CRM` i `EXPORT_READY`; jeśli LLM zwraca `ERROR` albo `PASS`, lead ląduje w `VERIF_NEEDED` do ręcznego przejrzenia.
+
+## Stack
+
+n8n (self-hosted, Docker) · Apify · OpenAI `gpt-4.1-nano` · Google Gemini · Google Sheets
+
+## License
+
+Source-available for reference. Not licensed for redistribution or commercial use.
